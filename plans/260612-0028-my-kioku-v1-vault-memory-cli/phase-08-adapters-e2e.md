@@ -1,7 +1,7 @@
 ---
 phase: 8
 title: "Adapters & E2E"
-status: pending
+status: completed
 priority: P2
 effort: "4h"
 dependencies: [4, 5, 6, 7]

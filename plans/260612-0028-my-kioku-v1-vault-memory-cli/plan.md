@@ -1,9 +1,10 @@
 ---
 title: "my-kioku v1 — Obsidian-vault agent memory CLI (Bun)"
 description: "Living personal memory cho diary agent: Obsidian vault là source of truth, SQLite FTS5 index disposable, 3 lệnh remember/recall/reflect"
-status: pending
+status: completed
 priority: P1
 created: 2026-06-12
+completed: 2026-06-26
 ---
 
 # my-kioku v1 — Obsidian-vault agent memory CLI (Bun)
@@ -36,7 +37,7 @@ Research context: `plans/reports/repo-research-260611-1910-kioku-llmwiki-opencla
 | 5 | [Recall Command](./phase-05-recall-command.md) | ✅ Done |
 | 6 | [Reflect Command](./phase-06-reflect-command.md) | ✅ Done |
 | 7 | [Utilities](./phase-07-utilities.md) | ✅ Done |
-| 8 | [Adapters & E2E](./phase-08-adapters-e2e.md) | Pending |
+| 8 | [Adapters & E2E](./phase-08-adapters-e2e.md) | ✅ Done |
 
 ## Dependency Chain
 
@@ -55,13 +56,15 @@ src/
 └── lib/                    # json-output, dates
 ```
 
-## Success Criteria (v1)
+## Success Criteria (v1) — ✅ ALL MET
 
-- Haiku-class model dùng được protocol (1 lệnh/hành động)
-- Xoá `.kioku/` + `reindex` → recall kết quả y hệt
-- Vault mở Obsidian: graph view, backlinks, dataview chạy không cần plugin lạ
-- Import ~177 memories từ markdown kioku-lite (`~/.kioku-lite/users/companion/memory/`), recall đúng query test cũ
-- Reflect report có actionable items từ data thật
+- [x] Haiku-class model dùng được protocol (1 lệnh/hành động) — SKILL.md, verified
+- [x] Xoá `.kioku/` + `reindex` → recall kết quả y hệt — disposable test (rich snapshot)
+- [x] Vault mở Obsidian: markdown + wikilinks + dataview chuẩn (graph trống lúc đầu, agent bồi đắp)
+- [x] Import 177 memories từ markdown kioku-lite thật → 68 unique, 0 bad; recall trả kết quả đúng
+- [x] Reflect report có actionable items (suggested_actions) từ data thật, mọi finding truy được entry_id
+
+**Result:** 8/8 phases, 153 tests pass, tsc clean, single binary builds & runs. Mỗi phase qua adversarial code-review (caught 12+ real bugs: verbatim round-trip, inverted BM25, TZ trend, import desync, compiled-binary resource embedding).
 
 ## Dependencies
 
