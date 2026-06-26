@@ -95,6 +95,20 @@ export function openDb(vault: string): Database {
   return db;
 }
 
+/**
+ * Checkpoint the WAL back into the main db and close. A plain db.close() leaves
+ * the -wal file growing across CLI invocations (each command is a short-lived
+ * process); TRUNCATE folds it back so the index dir stays small.
+ */
+export function closeDb(db: Database): void {
+  try {
+    db.exec("PRAGMA wal_checkpoint(TRUNCATE);");
+  } catch {
+    /* checkpoint is best-effort; never fail a command over it */
+  }
+  db.close();
+}
+
 /** Drop all known tables (index is disposable; this is the migration strategy). */
 function dropAll(db: Database): void {
   for (const t of [

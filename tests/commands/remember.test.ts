@@ -1,0 +1,137 @@
+import { test, expect, afterEach, beforeEach } from "bun:test";
+import { mkdtempSync, rmSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { dailyNotePath, entityPath } from "../../src/vault/vault-paths.ts";
+
+const CLI = join(import.meta.dir, "..", "..", "src", "cli.ts");
+let vault: string;
+
+beforeEach(() => {
+  vault = mkdtempSync(join(tmpdir(), "kioku-rem-"));
+  run(["init", "--vault", vault]);
+});
+afterEach(() => {
+  rmSync(vault, { recursive: true, force: true });
+});
+
+interface RunResult {
+  ok: boolean;
+  data?: any;
+  error?: string;
+  exitCode: number;
+}
+
+/** Invoke the CLI as a subprocess (the way an agent does). */
+function run(args: string[], stdin?: string): RunResult {
+  const proc = Bun.spawnSync(["bun", "run", CLI, ...args], {
+    stdin: stdin !== undefined ? Buffer.from(stdin, "utf8") : undefined,
+  });
+  const out = proc.stdout.toString().trim();
+  const parsed = out ? JSON.parse(out) : {};
+  return { ...parsed, exitCode: proc.exitCode ?? 0 };
+}
+
+test("remember appends an entry and creates entity stubs", () => {
+  const r = run([
+    "remember",
+    "--vault", vault,
+    "--mood", "happy/4",
+    "--date", "2026-06-12",
+    "--time", "21:30",
+    "Ăn tối với [[Hùng]] ở [[Quảng An]]",
+  ]);
+  expect(r.ok).toBe(true);
+  expect(r.data.entry_id).toBe("2026-06-12#0");
+  expect(r.data.links).toEqual(["Hùng", "Quảng An"]);
+  expect(r.data.stubs_created.sort()).toEqual(["Hùng", "Quảng An"]);
+
+  const note = readFileSync(dailyNotePath(vault, "2026-06-12"), "utf8");
+  expect(note).toContain("mood:: happy/4");
+  expect(note).toContain("Ăn tối với [[Hùng]] ở [[Quảng An]]");
+});
+
+test("stdin preserves Vietnamese + quotes + newlines verbatim", () => {
+  const text = `Hôm nay "vui" lắm!\nGặp [[Mẹ]] 'ở' nhà 🏡`;
+  const r = run(
+    ["remember", "--vault", vault, "--stdin", "--date", "2026-06-12"],
+    text,
+  );
+  expect(r.ok).toBe(true);
+  const note = readFileSync(dailyNotePath(vault, "2026-06-12"), "utf8");
+  expect(note).toContain(text);
+});
+
+test("linking an existing entity alias does NOT create a duplicate stub", () => {
+  // First remember stubs "Hùng".
+  run(["remember", "--vault", vault, "--date", "2026-06-12", "Gặp [[Hùng]]"]);
+  // Give Hùng an alias by editing the entity note, then reindex.
+  const p = entityPath(vault, "Hùng");
+  const raw = readFileSync(p, "utf8");
+  Bun.write(p, raw.replace("aliases: []", 'aliases:\n  - "bạn Hùng"'));
+  run(["reindex", "--vault", vault]);
+
+  // Linking the alias must not create a new stub.
+  const r = run(["remember", "--vault", vault, "--date", "2026-06-13", "Đi chơi với [[bạn Hùng]]"]);
+  expect(r.ok).toBe(true);
+  expect(r.data.stubs_created).toEqual([]);
+});
+
+test("--checkin writes frontmatter without text AND indexes it (C1)", () => {
+  const r = run([
+    "remember", "--vault", vault, "--date", "2026-06-12",
+    "--checkin", "sleep_hours=7,exercise=run 5km,mood_score=4",
+  ]);
+  expect(r.ok).toBe(true);
+  expect(r.data.checkin).toMatchObject({ sleep_hours: 7, mood_score: 4 });
+  const note = readFileSync(dailyNotePath(vault, "2026-06-12"), "utf8");
+  expect(note).toContain("sleep_hours: 7");
+
+  // C1 regression: checkin-only must be indexed immediately, no separate reindex.
+  const { openDb } = require("../../src/index/db.ts");
+  const db = openDb(vault);
+  const meta = db
+    .query("SELECT sleep_hours, mood_score FROM daily_meta WHERE date = ?")
+    .get("2026-06-12");
+  expect(meta).toMatchObject({ sleep_hours: 7, mood_score: 4 });
+  db.close();
+});
+
+test("invalid mood format warns but still stores text", () => {
+  const r = run([
+    "remember", "--vault", vault, "--date", "2026-06-12",
+    "--mood", "super duper", "Một ngày đẹp trời",
+  ]);
+  expect(r.ok).toBe(true);
+  expect(r.data.mood).toBeNull();
+  expect(r.data.warnings?.length).toBeGreaterThanOrEqual(1);
+  const note = readFileSync(dailyNotePath(vault, "2026-06-12"), "utf8");
+  expect(note).toContain("Một ngày đẹp trời");
+  expect(note).not.toContain("mood::");
+});
+
+test("empty remember (no text, no checkin) fails", () => {
+  const r = run(["remember", "--vault", vault, "--date", "2026-06-12"]);
+  expect(r.ok).toBe(false);
+  expect(r.exitCode).toBe(1);
+});
+
+test("entry is immediately queryable via the index after remember", () => {
+  run(["remember", "--vault", vault, "--date", "2026-06-12", "Ăn phở ngon"]);
+  // Re-open the index and FTS-search.
+  const { openDb } = require("../../src/index/db.ts");
+  const { syncIfStale } = require("../../src/index/lazy-sync.ts");
+  const db = openDb(vault);
+  syncIfStale(db, vault);
+  const hit = db
+    .query("SELECT e.body FROM entries_fts f JOIN entries e ON e.rowid=f.rowid WHERE entries_fts MATCH ?")
+    .all("pho");
+  expect(hit.length).toBe(1);
+  db.close();
+});
+
+test("invalid --date is rejected", () => {
+  const r = run(["remember", "--vault", vault, "--date", "2026-13-99", "hi"]);
+  expect(r.ok).toBe(false);
+  expect(r.exitCode).toBe(1);
+});

@@ -6,6 +6,7 @@ import { parseArgs } from "node:util";
 import { ok, fail } from "./lib/json-output.ts";
 import { runInit } from "./commands/init.ts";
 import { runReindex } from "./commands/reindex.ts";
+import { runRemember } from "./commands/remember.ts";
 
 const COMMANDS = [
   "init",
@@ -51,24 +52,42 @@ function main(): void {
     );
   }
 
-  // Parse the remaining args. Commands read what they need; parseArgs with
-  // strict:false tolerates command-specific flags declared per-command later.
-  const { values } = parseArgs({
+  // Parse the remaining args. Flags are declared centrally; strict:false keeps
+  // unknown flags from crashing while we grow the surface.
+  const { values, positionals } = parseArgs({
     args: argv.slice(1),
     options: {
       vault: { type: "string" },
+      // remember
+      stdin: { type: "boolean" },
+      mood: { type: "string" },
+      time: { type: "string" },
+      date: { type: "string" },
+      checkin: { type: "string" },
     },
     strict: false,
     allowPositionals: true,
   });
 
-  const vaultFlag = typeof values.vault === "string" ? values.vault : undefined;
+  const str = (v: unknown): string | undefined =>
+    typeof v === "string" ? v : undefined;
+  const vaultFlag = str(values.vault);
 
   switch (command) {
     case "init":
       return runInit(vaultFlag);
     case "reindex":
       return runReindex(vaultFlag);
+    case "remember":
+      return runRemember({
+        vaultFlag,
+        text: positionals[0],
+        stdin: values.stdin === true,
+        mood: str(values.mood),
+        time: str(values.time),
+        date: str(values.date),
+        checkin: str(values.checkin),
+      });
     default:
       // Stubs — implemented in later phases.
       return fail(

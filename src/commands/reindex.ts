@@ -2,8 +2,8 @@
 
 import { ok, fail } from "../lib/json-output.ts";
 import { resolveVault, NO_VAULT_HINT } from "../config.ts";
-import { openDb } from "../index/db.ts";
-import { fullReindex } from "../index/indexer.ts";
+import { openDb, closeDb } from "../index/db.ts";
+import { fullReindex, type ReindexStats } from "../index/indexer.ts";
 
 export function runReindex(vaultFlag?: string): never {
   const resolved = resolveVault({ vaultFlag });
@@ -13,10 +13,12 @@ export function runReindex(vaultFlag?: string): never {
   }
 
   const db = openDb(resolved.path);
+  let stats: ReindexStats;
   try {
-    const stats = fullReindex(db, resolved.path);
-    return ok(stats);
+    stats = fullReindex(db, resolved.path);
   } finally {
-    db.close();
+    // closeDb runs before ok() exits the process; checkpoints WAL.
+    closeDb(db);
   }
+  return ok(stats);
 }
