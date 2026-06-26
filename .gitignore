@@ -1,0 +1,17 @@
+node_modules/
+dist/
+*.log
+
+# Local test vaults
+/tmp-vault/
+.DS_Store
+
+# Secrets — never commit
+.env
+.env.*
+*.pem
+*.key
+
+# Python venv created by .claude skill installers (machine-specific, large)
+.claude/skills/.venv/
+**/.venv/
