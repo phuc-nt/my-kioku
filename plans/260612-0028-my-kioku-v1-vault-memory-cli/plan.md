@@ -29,8 +29,8 @@ Research context: `plans/reports/repo-research-260611-1910-kioku-llmwiki-opencla
 
 | Phase | Name | Status |
 |-------|------|--------|
-| 1 | [Scaffold & Config](./phase-01-scaffold-config.md) | Pending |
-| 2 | [Vault Core](./phase-02-vault-core.md) | Pending |
+| 1 | [Scaffold & Config](./phase-01-scaffold-config.md) | ✅ Done |
+| 2 | [Vault Core](./phase-02-vault-core.md) | ✅ Done |
 | 3 | [SQLite Index](./phase-03-sqlite-index.md) | Pending |
 | 4 | [Remember Command](./phase-04-remember-command.md) | Pending |
 | 5 | [Recall Command](./phase-05-recall-command.md) | Pending |
