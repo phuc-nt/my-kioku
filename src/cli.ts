@@ -8,6 +8,7 @@ import { runInit } from "./commands/init.ts";
 import { runReindex } from "./commands/reindex.ts";
 import { runRemember } from "./commands/remember.ts";
 import { runRecall } from "./commands/recall.ts";
+import { runReflect } from "./commands/reflect.ts";
 
 const COMMANDS = [
   "init",
@@ -72,6 +73,8 @@ function main(): void {
       to: { type: "string" },
       since: { type: "string" },
       limit: { type: "string" },
+      // reflect
+      md: { type: "boolean" },
     },
     strict: false,
     allowPositionals: true,
@@ -109,6 +112,12 @@ function main(): void {
         limit: limitStr ? Number(limitStr) : undefined,
       });
     }
+    case "reflect":
+      return runReflect({
+        vaultFlag,
+        since: str(values.since),
+        md: values.md === true,
+      });
     default:
       // Stubs — implemented in later phases.
       return fail(
