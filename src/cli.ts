@@ -9,6 +9,9 @@ import { runReindex } from "./commands/reindex.ts";
 import { runRemember } from "./commands/remember.ts";
 import { runRecall } from "./commands/recall.ts";
 import { runReflect } from "./commands/reflect.ts";
+import { runImport } from "./commands/import-kioku-lite.ts";
+import { runEntityMerge } from "./commands/entity-merge.ts";
+import { runWatch } from "./commands/watch.ts";
 
 const COMMANDS = [
   "init",
@@ -75,6 +78,11 @@ function main(): void {
       limit: { type: "string" },
       // reflect
       md: { type: "boolean" },
+      // import / entity merge / watch
+      "from-kioku-lite": { type: "string" },
+      "dry-run": { type: "boolean" },
+      into: { type: "string" },
+      interval: { type: "string" },
     },
     strict: false,
     allowPositionals: true,
@@ -118,6 +126,36 @@ function main(): void {
         since: str(values.since),
         md: values.md === true,
       });
+    case "import":
+      return runImport({
+        vaultFlag,
+        source: str(values["from-kioku-lite"]),
+        dryRun: values["dry-run"] === true,
+      });
+    case "entity": {
+      // Sub-action: currently only `merge`.
+      const action = positionals[0];
+      if (action !== "merge") {
+        return fail(
+          `Unknown entity action: ${action ?? "(none)"}`,
+          'Usage: entity merge "B" --into "A" [--dry-run].',
+        );
+      }
+      return runEntityMerge({
+        vaultFlag,
+        from: positionals[1],
+        into: str(values.into),
+        dryRun: values["dry-run"] === true,
+      });
+    }
+    case "watch": {
+      const iv = str(values.interval);
+      // watch is async and never returns; surface any startup rejection.
+      runWatch({ vaultFlag, interval: iv ? Number(iv) : undefined }).catch((e) =>
+        fail(`watch failed: ${(e as Error).message}`),
+      );
+      return undefined as never;
+    }
     default:
       // Stubs — implemented in later phases.
       return fail(
