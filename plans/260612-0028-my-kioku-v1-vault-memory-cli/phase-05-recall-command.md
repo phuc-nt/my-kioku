@@ -1,7 +1,7 @@
 ---
 phase: 5
 title: "Recall Command"
-status: pending
+status: completed
 priority: P1
 effort: "4h"
 dependencies: [3]

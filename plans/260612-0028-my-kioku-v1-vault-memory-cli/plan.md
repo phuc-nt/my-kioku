@@ -33,7 +33,7 @@ Research context: `plans/reports/repo-research-260611-1910-kioku-llmwiki-opencla
 | 2 | [Vault Core](./phase-02-vault-core.md) | ✅ Done |
 | 3 | [SQLite Index](./phase-03-sqlite-index.md) | ✅ Done |
 | 4 | [Remember Command](./phase-04-remember-command.md) | ✅ Done |
-| 5 | [Recall Command](./phase-05-recall-command.md) | Pending |
+| 5 | [Recall Command](./phase-05-recall-command.md) | ✅ Done |
 | 6 | [Reflect Command](./phase-06-reflect-command.md) | Pending |
 | 7 | [Utilities](./phase-07-utilities.md) | Pending |
 | 8 | [Adapters & E2E](./phase-08-adapters-e2e.md) | Pending |
