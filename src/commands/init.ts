@@ -1,10 +1,17 @@
 // `my-kioku init` — create (or top up) a vault's folder structure.
 // Idempotent: re-running never destroys existing data.
+// Flags: --skill <dir> writes the agent SKILL.md; --hook prints hook setup help.
 
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { ok, fail } from "../lib/json-output.ts";
 import { resolveVault, NO_VAULT_HINT, VAULT_INDEX_DIR } from "../config.ts";
+// Embed the resources as TEXT so they ship inside the `bun build --compile`
+// binary. Reading them from a resources/ dir on disk fails in a compiled binary
+// (import.meta.dir resolves to a virtual /$bunfs path) — embedding is the only
+// way --skill/--hook work both from source and as a shipped binary.
+import SKILL_MD from "../../resources/SKILL.md" with { type: "text" };
+import HOOK_SH from "../../resources/hooks/kioku-session-start-digest.sh" with { type: "text" };
 
 const VAULT_README = `# my-kioku vault
 
@@ -29,8 +36,14 @@ disposable and can be rebuilt at any time with \`my-kioku reindex\`.
 - Mood is a free-form word plus optional 1–5 intensity: \`mood:: tired/2\`.
 `;
 
-export function runInit(vaultFlag?: string): never {
-  const resolved = resolveVault({ vaultFlag, allowMissing: true });
+export interface InitArgs {
+  vaultFlag?: string;
+  skillDir?: string; // --skill <dir>: copy SKILL.md there
+  hook?: boolean; // --hook: print hook setup guidance
+}
+
+export function runInit(args: InitArgs): never {
+  const resolved = resolveVault({ vaultFlag: args.vaultFlag, allowMissing: true });
   if (!resolved.path) {
     return fail("No vault path provided.", NO_VAULT_HINT);
   }
@@ -59,9 +72,41 @@ export function runInit(vaultFlag?: string): never {
     writeFileSync(readmePath, VAULT_README, "utf8");
   }
 
-  return ok({
+  const result: Record<string, unknown> = {
     vault,
     created,
     already_present: folders.filter((f) => !created.includes(f)),
-  });
+  };
+
+  // --skill: write the (embedded) agent protocol into the target dir.
+  // Overwrites an existing SKILL.md intentionally — it is canonical protocol that
+  // should track the installed binary version.
+  if (args.skillDir) {
+    mkdirSync(args.skillDir, { recursive: true });
+    const dest = join(args.skillDir, "SKILL.md");
+    writeFileSync(dest, SKILL_MD, "utf8");
+    result.skill_written = dest;
+  }
+
+  // --hook: write the (embedded) hook script to a stable on-disk path inside the
+  // vault index folder, then PRINT guidance (never edits the user's settings.json).
+  if (args.hook) {
+    const hookPath = join(vault, VAULT_INDEX_DIR, "kioku-session-start-digest.sh");
+    writeFileSync(hookPath, HOOK_SH, { encoding: "utf8", mode: 0o755 });
+    result.hook = {
+      script: hookPath,
+      instructions:
+        "Add to your Claude Code settings.json (do not let any tool edit it for you):",
+      settings_snippet: {
+        hooks: {
+          SessionStart: [
+            { hooks: [{ type: "command", command: `bash ${hookPath}` }] },
+          ],
+        },
+      },
+      note: `Ensure MY_KIOKU_VAULT=${vault} is exported in the hook's environment.`,
+    };
+  }
+
+  return ok(result);
 }

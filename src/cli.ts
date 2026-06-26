@@ -83,6 +83,9 @@ function main(): void {
       "dry-run": { type: "boolean" },
       into: { type: "string" },
       interval: { type: "string" },
+      // init adapters
+      skill: { type: "string" },
+      hook: { type: "boolean" },
     },
     strict: false,
     allowPositionals: true,
@@ -94,7 +97,11 @@ function main(): void {
 
   switch (command) {
     case "init":
-      return runInit(vaultFlag);
+      return runInit({
+        vaultFlag,
+        skillDir: str(values.skill),
+        hook: values.hook === true,
+      });
     case "reindex":
       return runReindex(vaultFlag);
     case "remember":
