@@ -7,6 +7,7 @@ import { ok, fail } from "./lib/json-output.ts";
 import { runInit } from "./commands/init.ts";
 import { runReindex } from "./commands/reindex.ts";
 import { runRemember } from "./commands/remember.ts";
+import { runRecall } from "./commands/recall.ts";
 
 const COMMANDS = [
   "init",
@@ -64,6 +65,13 @@ function main(): void {
       time: { type: "string" },
       date: { type: "string" },
       checkin: { type: "string" },
+      // recall
+      entity: { type: "string" },
+      digest: { type: "boolean" },
+      from: { type: "string" },
+      to: { type: "string" },
+      since: { type: "string" },
+      limit: { type: "string" },
     },
     strict: false,
     allowPositionals: true,
@@ -88,6 +96,19 @@ function main(): void {
         date: str(values.date),
         checkin: str(values.checkin),
       });
+    case "recall": {
+      const limitStr = str(values.limit);
+      return runRecall({
+        vaultFlag,
+        query: positionals[0],
+        entity: str(values.entity),
+        digest: values.digest === true,
+        from: str(values.from),
+        to: str(values.to),
+        since: str(values.since),
+        limit: limitStr ? Number(limitStr) : undefined,
+      });
+    }
     default:
       // Stubs — implemented in later phases.
       return fail(
