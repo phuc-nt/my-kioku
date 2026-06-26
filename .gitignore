@@ -15,3 +15,9 @@ dist/
 # Python venv created by .claude skill installers (machine-specific, large)
 .claude/skills/.venv/
 **/.venv/
+
+# Internal development tooling & notes — not published to the public repo
+.claude/
+plans/
+AGENTS.md
+CLAUDE.md
