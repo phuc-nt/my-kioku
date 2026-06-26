@@ -5,6 +5,7 @@
 import { parseArgs } from "node:util";
 import { ok, fail } from "./lib/json-output.ts";
 import { runInit } from "./commands/init.ts";
+import { runReindex } from "./commands/reindex.ts";
 
 const COMMANDS = [
   "init",
@@ -66,6 +67,8 @@ function main(): void {
   switch (command) {
     case "init":
       return runInit(vaultFlag);
+    case "reindex":
+      return runReindex(vaultFlag);
     default:
       // Stubs — implemented in later phases.
       return fail(
