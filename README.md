@@ -1,5 +1,8 @@
 # my-kioku
 
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](./LICENSE)
+[![Bun](https://img.shields.io/badge/Bun-%E2%89%A51.3-black)](https://bun.sh)
+
 **Living personal memory for a diary agent.** An Obsidian markdown vault *is* the
 database — markdown + wikilinks + frontmatter are the source of truth; SQLite FTS5
 is a disposable index that rebuilds 100% from the vault. No vector search.
@@ -97,4 +100,9 @@ aliases, and writes insight notes. The vault improves itself over time.
 - Emotions are structured fields, not graph entities.
 - Reflect is deterministic; the agent does the judgement via cron.
 
-See `docs/` for architecture, code standards, and the development roadmap.
+See [`docs/`](./docs) for architecture, codebase summary, and code standards;
+[`CHANGELOG.md`](./CHANGELOG.md) for release notes.
+
+## License
+
+[Apache-2.0](./LICENSE) © 2026 phucnt.

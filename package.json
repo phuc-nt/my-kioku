@@ -1,14 +1,43 @@
 {
   "name": "my-kioku",
   "version": "0.1.0",
-  "description": "Living personal memory for a diary agent — Obsidian vault is the source of truth, SQLite FTS5 is a disposable index",
+  "description": "Living personal memory for a diary agent — an Obsidian vault is the source of truth, SQLite FTS5 is a disposable index",
   "type": "module",
+  "license": "Apache-2.0",
+  "author": "phucnt",
+  "homepage": "https://github.com/phuc-nt/my-kioku#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/phuc-nt/my-kioku.git"
+  },
+  "bugs": {
+    "url": "https://github.com/phuc-nt/my-kioku/issues"
+  },
+  "keywords": [
+    "agent-memory",
+    "obsidian",
+    "markdown",
+    "sqlite",
+    "fts5",
+    "bun",
+    "cli",
+    "diary",
+    "knowledge-graph"
+  ],
   "bin": {
     "my-kioku": "src/cli.ts"
   },
+  "files": [
+    "src",
+    "resources",
+    "README.md",
+    "LICENSE",
+    "NOTICE"
+  ],
   "scripts": {
     "build": "bun build --compile src/cli.ts --outfile dist/my-kioku",
     "test": "bun test",
+    "typecheck": "tsc --noEmit",
     "start": "bun run src/cli.ts"
   },
   "dependencies": {
