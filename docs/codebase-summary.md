@@ -48,7 +48,10 @@ Generated from source audit of v1 implementation (150 passing tests, 8 phases co
 | `hydrate.ts` | ~65 | hydrate() — inflate scored entry id into full result (mood, relations, tags always present) |
 | `digest.ts` | ~60 | digestRecent() — summarize last N days for session hooks |
 
-**Token**: unicode61 remove_diacritics 2 (matches fold() helper).
+**Token**: unicode61 remove_diacritics 2. The tokenizer strips combining marks but
+NOT `đ`, so `entries_fts` is a **standalone** FTS storing `fold(body)` (đ→d) and the
+query is folded too — a diacritic-free "gia dinh" matches "gia đình". Display always
+reads `entries.body` (untouched); FTS rowid == entries.rowid keeps them 1:1.
 
 ### src/reflect/ (Deterministic analysis)
 | File | LOC | Purpose |

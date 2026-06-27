@@ -1,6 +1,7 @@
 // Index a single vault file into SQLite, dispatching by kind. The index mirrors
-// the markdown; entries + its FTS row are always written in the same transaction
-// so the external-content FTS table can never drift from `entries`.
+// the markdown; entries + its FTS row are always written in the same transaction.
+// entries_fts stores fold(body) (diacritic-folded incl. đ→d) so diacritic-free
+// queries match; entries.rowid == entries_fts.rowid keeps the two 1:1.
 
 import { Database } from "bun:sqlite";
 import { readFileSync } from "node:fs";
@@ -8,6 +9,7 @@ import { basename } from "node:path";
 import { parseFrontmatter } from "../vault/frontmatter.ts";
 import { parseEntries } from "../vault/entry-parser.ts";
 import { extractWikilinks } from "../vault/wikilink-parser.ts";
+import { fold } from "../lib/diacritics.ts";
 import { walkVault, type VaultFile, type FileKind } from "./vault-walker.ts";
 
 const KNOWN_META = new Set(["sleep_hours", "exercise", "mood_score"]);
@@ -108,7 +110,8 @@ function indexJournal(
       e.intensity ?? null,
       e.text,
     );
-    insFts.run(Number(info.lastInsertRowid), e.text);
+    // FTS stores the FOLDED body (đ→d + strip marks) so diacritic-free queries hit.
+    insFts.run(Number(info.lastInsertRowid), fold(e.text));
     for (const target of extractWikilinks(e.text)) insLink.run(id, target);
     // Emotional relations (typed edges) + plain tags from the entry's leading fields.
     for (const [verb, targets] of Object.entries(e.relations ?? {})) {

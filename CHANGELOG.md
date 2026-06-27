@@ -4,6 +4,22 @@ All notable changes to this project are documented here. Format based on
 [Keep a Changelog](https://keepachangelog.com/); versions follow
 [Semantic Versioning](https://semver.org/).
 
+## [0.2.1] - 2026-06-27
+
+Vietnamese `đ`-fold in full-text search. Index-only fix — markdown untouched; the
+schema bump (3→4) is a disposable drop-rebuild, so an existing vault auto-migrates on
+next open with zero data risk.
+
+### Fixed
+
+- **FTS now folds `đ`→`d`** — SQLite's `unicode61 remove_diacritics 2` strips combining
+  marks (ờ→o) but treats `đ` as a distinct base letter, so a diacritic-free query like
+  "gia dinh" returned **0 hits** against bodies containing "gia đình" (96% of real
+  entries carry `đ`). `entries_fts` is now a **standalone** FTS storing `fold(body)`
+  (đ→d + strip marks) and the query is folded symmetrically. Display still reads the
+  untouched `entries.body` (verbatim contract intact). Real-data E2E: `gia dinh` 0→20,
+  `doc sach`→17, `duong`→11; no regression on accented/ASCII queries.
+
 ## [0.2.0] - 2026-06-27
 
 Emotional relations (markdown-native typed edges) + richer migration. Additive: a

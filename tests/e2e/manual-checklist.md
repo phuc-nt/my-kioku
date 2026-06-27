@@ -22,9 +22,8 @@ my-kioku init --vault "$VAULT"
 - [ ] **Idempotent** — run import again → `entries_created=0`, all skipped duplicate.
 - [ ] **Recall (FTS)** — `my-kioku recall --vault "$VAULT" "Techbase"` → several hits.
       Try diacritic-free queries: `Nhat Ban`, `phuc`, `vo con` → all return hits.
-      KNOWN LIMIT: `đ`-words (e.g. "gia đình") do NOT match the `d`-form via FTS —
-      SQLite `remove_diacritics 2` treats `đ` as a distinct base letter. Entity-name
-      matching folds `đ→d`; body FTS does not. Acceptable for v1.
+      `đ`-words ARE folded (v0.2.1+): `gia dinh` matches "gia đình", `doc sach` matches
+      "đọc sách" — the FTS index stores a folded copy (đ→d) and the query is folded too.
 - [ ] **Reflect** — `my-kioku reflect --vault "$VAULT" --since 2020-01-01`
       Expect: `entries_without_links` ≈ 68 (the living-loop baseline — imports carry
       no wikilinks by design; the agent backfills them over time).

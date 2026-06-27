@@ -3,6 +3,7 @@
 // can never crash the query (a real pain point in the previous system).
 
 import { Database } from "bun:sqlite";
+import { fold } from "../lib/diacritics.ts";
 
 export interface FtsHit {
   id: string;
@@ -18,10 +19,11 @@ export interface FtsHit {
  */
 export function sanitizeFtsQuery(raw: string): string {
   // Keep Unicode letters/numbers; everything else is a separator. This strips
-  // every FTS operator while preserving Vietnamese words.
+  // every FTS operator while preserving Vietnamese words. Each token is FOLDED
+  // (đ→d + strip marks) to match the folded index, so "gia dinh" hits "gia đình".
   const tokens = raw
     .split(/[^\p{L}\p{N}]+/u)
-    .map((t) => t.trim())
+    .map((t) => fold(t.trim()))
     .filter((t) => t.length > 0);
   if (tokens.length === 0) return "";
   // Quote each token so none is interpreted as an operator. (No internal quotes

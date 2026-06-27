@@ -8,7 +8,7 @@ import { join, dirname } from "node:path";
 import { VAULT_INDEX_DIR } from "../config.ts";
 
 /** Bump when the schema changes — triggers a full rebuild on next open. */
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
 export function indexDbPath(vault: string): string {
   return join(vault, VAULT_INDEX_DIR, "index.db");
@@ -32,10 +32,13 @@ CREATE TABLE IF NOT EXISTS entries(
   body TEXT
 );
 
+-- Standalone FTS (NOT external-content): it stores a DIACRITIC-FOLDED copy of the
+-- body (fold() also maps đ→d, which the unicode61 tokenizer does NOT). The indexer
+-- writes fold(body) here and recall folds the query, so "gia dinh" matches "gia
+-- đình". Display always comes from entries.body (untouched); the FTS rowid mirrors
+-- entries.rowid so joins/deletes stay 1:1.
 CREATE VIRTUAL TABLE IF NOT EXISTS entries_fts USING fts5(
   body,
-  content='entries',
-  content_rowid='rowid',
   tokenize='unicode61 remove_diacritics 2'
 );
 
