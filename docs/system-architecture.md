@@ -121,6 +121,18 @@ Details about this person...
 
 **SCHEMA_VERSION**: 3 (v0.2.0+) — includes relations + tags tables; drop-rebuild migration on schema bump.
 
+## Versioning (three independent axes)
+
+- **package version** (`package.json`) — the binary release.
+- **VAULT_FORMAT_VERSION** (`src/vault/vault-version.ts`) — the vault's markdown
+  conventions. Written to `vault-version.json` at the vault ROOT (git-tracked,
+  outside `.kioku/`) by `init`. `compareVaultVersion()` → current/older/newer/
+  unversioned so a future binary can migrate an older vault. v1.0/v1.1 = `1`.
+- **SCHEMA_VERSION** — the disposable index; a bump just rebuilds from markdown.
+
+The vault is intended to be its own git repo (markdown = source of truth), giving
+the memory a diff-able / rollback-able history independent of the code repo.
+
 ## Key Flows
 
 ### Remember (Append + Index)

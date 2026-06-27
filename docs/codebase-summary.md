@@ -25,6 +25,7 @@ Generated from source audit of v1 implementation (150 passing tests, 8 phases co
 | `frontmatter.ts` | ~80 | parseFrontmatter(), renderFrontmatter() — YAML boundaries |
 | `wikilink-parser.ts` | ~60 | extractWikilinks() — find [[Name]] in text |
 | `vault-paths.ts` | ~40 | dailyNoteRelPath(), entityRelPath() — construct paths |
+| `vault-version.ts` | ~70 | vault-version.json marker (VAULT_FORMAT_VERSION); ensure/read/compare for upgrades |
 
 **Key**: daily-note handles verbatim-safe append (heading after blank line only); inline-field-parser enforces strict shape on relations/tags so prose falls through to body.
 
@@ -64,7 +65,7 @@ Generated from source audit of v1 implementation (150 passing tests, 8 phases co
 ### src/commands/ (8 command implementations)
 | File | LOC | Purpose |
 |------|-----|---------|
-| `init.ts` | ~100 | Create vault structure; optionally copy SKILL.md, print hook setup |
+| `init.ts` | ~110 | Create vault structure + write vault-version.json; optionally copy SKILL.md, print hook setup |
 | `remember.ts` | ~180 | Append entry + auto-stub entities + index; one call, all operations; round-trip relations/tags |
 | `recall.ts` | ~200 | FTS search + entity expansion + relation expansion + time filters + digest mode; --relation <type> filter |
 | `reflect.ts` | ~110 | Scan vault → lint + stats + relation/tag detectors; 3 new detectors for living loop |

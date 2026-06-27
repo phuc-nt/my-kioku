@@ -25,6 +25,11 @@ v0.1 vault re-indexes unchanged (schema bump 2→3 is a drop-rebuild).
   heading and per-block `tags: [...]` (Python-list) into `tags::` lines, scans
   subfolders recursively, and falls back to the timestamp date when `event_time` is
   partial. Validated on a real 442-block Telegram backup (155 entries, 0 dropped).
+- **Vault format-version marker** — `init` writes `vault-version.json` at the vault
+  root (git-tracked, outside `.kioku/`) recording `{vault_format_version,
+  my_kioku_version, created}`, so a future binary can detect an older vault and
+  migrate it. v1.0/v1.1 share format version `1`. Distinct from the index schema
+  version and the package version.
 - SKILL.md teaches the relation/tags protocol; docs updated.
 
 ### Changed

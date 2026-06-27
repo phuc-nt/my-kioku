@@ -74,8 +74,13 @@ All commands output a stable JSON envelope `{ok, data}` / `{ok:false, error, hin
 ├── journal/2026/06/2026-06-12.md   # daily note; entries are `## HH:MM` sections
 ├── entities/Hùng.md                # one note per person/place/event
 ├── insights/                       # agent-written reflections
+├── vault-version.json              # vault format version (git-tracked; for upgrades)
 └── .kioku/                         # disposable index + reflect output (gitignored)
 ```
+
+The vault is meant to be its **own git repo** — markdown is the source of truth, so
+your memory gets a diff-able, rollback-able history (`git init` inside the vault;
+`.kioku/` is gitignored, everything else tracked).
 
 - **Daily note**: frontmatter holds health check-ins; each entry is a `## HH:MM`
   section. The leading lines (after the heading) may carry inline fields —
@@ -104,6 +109,17 @@ aliases, and writes insight notes. The vault improves itself over time.
 - No vector search — FTS5 (`unicode61 remove_diacritics 2`) + entity-link expansion.
 - Emotions are structured fields, not graph entities.
 - Reflect is deterministic; the agent does the judgement via cron.
+
+## Versioning & upgrades
+
+Three independent versions, so upgrades are safe:
+
+- **package version** (`package.json`) — the binary release.
+- **vault format version** (`vault-version.json`, git-tracked) — the markdown
+  conventions. `init` records it; a future binary compares it to migrate an older
+  vault. v1.0 and v1.1 share format version `1` (relations/tags are additive).
+- **index schema version** (internal) — the disposable SQLite index; a bump just
+  triggers an automatic rebuild from markdown, never touching your notes.
 
 See [`docs/`](./docs) for architecture, codebase summary, and code standards;
 [`CHANGELOG.md`](./CHANGELOG.md) for release notes.
