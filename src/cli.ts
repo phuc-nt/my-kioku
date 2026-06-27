@@ -71,6 +71,7 @@ function main(): void {
       checkin: { type: "string" },
       // recall
       entity: { type: "string" },
+      relation: { type: "string" },
       digest: { type: "boolean" },
       from: { type: "string" },
       to: { type: "string" },
@@ -120,6 +121,7 @@ function main(): void {
         vaultFlag,
         query: positionals[0],
         entity: str(values.entity),
+        relation: str(values.relation),
         digest: values.digest === true,
         from: str(values.from),
         to: str(values.to),

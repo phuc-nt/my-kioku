@@ -18,6 +18,10 @@ import { parseEntries, type ParsedEntry } from "./entry-parser.ts";
 export interface AppendResult {
   ordinal: number; // position of the new entry among all entries
   entryId: string; // "{date}#{ordinal}"
+  // The entry as the INDEXER will parse it (relations/tags stripped from body).
+  // Single source of truth — callers must not re-parse the text themselves
+  // (re-parsing without the mood line caused a relation parse-drift bug).
+  entry: ParsedEntry;
 }
 
 /** Ensure the journal/YYYY/MM folder exists and the file has a `# date` title. */
@@ -50,13 +54,20 @@ export function appendEntry(
   const moodLine = hasMood
     ? `mood:: ${mood!.trim()}${intensity !== undefined ? `/${intensity}` : ""}\n`
     : "";
-  const cleanText = text.replace(/\s+$/, "");
+  // Strip LEADING blank lines too: they are not meaningful body content, and a
+  // leading blank between the mood line and a relation/tags field line would end
+  // the parser's leading-field zone, misfiling the relation as body text. The
+  // verbatim body starts at the first non-blank line.
+  const cleanText = text.replace(/^(?:[ \t]*\n)+/, "").replace(/\s+$/, "");
   const section = `\n## ${time}\n${moodLine}${cleanText}\n`;
 
   appendFileSync(path, section, "utf8");
 
-  const ordinal = readDaily(vault, dateISO).entries.length - 1;
-  return { ordinal, entryId: `${dateISO}#${ordinal}` };
+  // Re-read the note so we return the entry exactly as the indexer will parse it.
+  const entries = readDaily(vault, dateISO).entries;
+  const ordinal = entries.length - 1;
+  const entry = entries[ordinal]!;
+  return { ordinal, entryId: `${dateISO}#${ordinal}`, entry };
 }
 
 export interface DailyNote {
