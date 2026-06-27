@@ -81,7 +81,7 @@ ${body}
 Return JSON: {"links":[{"tag":"...","entity_name":"...","mention_in_text":"<exact substring of the text to wrap in [[ ]]>"}],"skipped_tags":["..."]}.
 Only include a link if mention_in_text is an EXACT substring of the entry text above.`;
   try {
-    const res = await chat({ system: SKILL_RULE, user, json: true, maxTokens: 600, timeoutMs: 30_000 });
+    const res = await chat({ system: SKILL_RULE, user, json: true, maxTokens: 600, timeoutMs: 20_000 });
     return { decision: parseJsonReply<AgentDecision>(res.content), tokens: res.totalTokens };
   } catch (err) {
     return { decision: null, tokens: 0, error: (err as Error).message };
@@ -168,19 +168,35 @@ async function main(): Promise<void> {
   console.log(`links before: ${before} | candidate entries (tagged, unlinked): ${todo.length}\n`);
 
   let totalTokens = 0, totalApplied = 0, totalViolations = 0, parseFails = 0;
-  for (const e of todo) {
-    const { decision, tokens, error } = await askAgent(e);
-    totalTokens += tokens;
-    if (!decision) {
+
+  // Phase 1: fetch agent decisions CONCURRENTLY (independent, read-only LLM calls).
+  // A pool keeps a few in flight so one slow/wedged call can't stall the rest.
+  const CONCURRENCY = 6;
+  const decisions = new Array<{ e: SimEntry; decision: AgentDecision | null; tokens: number; error?: string }>(todo.length);
+  let next = 0;
+  async function worker(): Promise<void> {
+    while (true) {
+      const i = next++;
+      if (i >= todo.length) return;
+      const e = todo[i]!;
+      decisions[i] = { e, ...(await askAgent(e)) };
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(CONCURRENCY, todo.length) }, worker));
+
+  // Phase 2: apply edits SEQUENTIALLY (writes to the same daily file must serialize).
+  for (const d of decisions) {
+    totalTokens += d.tokens;
+    if (!d.decision) {
       parseFails++;
-      console.log(`  ${e.id}: ⚠️ ${error ? "call failed: " + error : "unparseable JSON"} (skipped)`);
+      console.log(`  ${d.e.id}: ⚠️ ${d.error ? "call failed: " + d.error : "unparseable JSON"} (skipped)`);
       continue;
     }
-    const { applied, violations } = applyLinks(vault, e, decision);
+    const { applied, violations } = applyLinks(vault, d.e, d.decision);
     totalApplied += applied.length;
     totalViolations += violations.length;
     console.log(
-      `  ${e.id}: tags=${e.tags.length} applied=[${applied.join(", ")}] skipped=${decision.skipped_tags.length}` +
+      `  ${d.e.id}: tags=${d.e.tags.length} applied=[${applied.join(", ")}] skipped=${d.decision.skipped_tags.length}` +
         (violations.length ? ` ⚠️ ${violations.join("; ")}` : ""),
     );
   }
