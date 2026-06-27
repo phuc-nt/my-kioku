@@ -6,6 +6,9 @@ import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { ok, fail } from "../lib/json-output.ts";
 import { resolveVault, NO_VAULT_HINT, VAULT_INDEX_DIR } from "../config.ts";
+import { ensureVaultVersion } from "../vault/vault-version.ts";
+import { todayISO } from "../lib/dates.ts";
+import pkg from "../../package.json" with { type: "json" };
 // Embed the resources as TEXT so they ship inside the `bun build --compile`
 // binary. Reading them from a resources/ dir on disk fails in a compiled binary
 // (import.meta.dir resolves to a virtual /$bunfs path) — embedding is the only
@@ -72,10 +75,15 @@ export function runInit(args: InitArgs): never {
     writeFileSync(readmePath, VAULT_README, "utf8");
   }
 
+  // Vault format-version marker at the root (git-tracked; outside .kioku/) so a
+  // future binary can detect an older vault and migrate it. Idempotent.
+  const version = ensureVaultVersion(vault, pkg.version, todayISO());
+
   const result: Record<string, unknown> = {
     vault,
     created,
     already_present: folders.filter((f) => !created.includes(f)),
+    vault_version: version,
   };
 
   // --skill: write the (embedded) agent protocol into the target dir.

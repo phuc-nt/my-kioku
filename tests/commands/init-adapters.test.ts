@@ -41,6 +41,19 @@ test("init --skill writes a non-empty SKILL.md (source mode)", () => {
   expect(content.length).toBeGreaterThan(500);
 });
 
+test("init writes a vault-version.json marker at the vault root (git-tracked)", () => {
+  const r = fromSource(["init", "--vault", vault]);
+  expect(r.ok).toBe(true);
+  expect(r.data.vault_version.vault_format_version).toBe(1);
+  const marker = join(vault, "vault-version.json");
+  expect(existsSync(marker)).toBe(true);
+  const v = JSON.parse(readFileSync(marker, "utf8"));
+  expect(v.my_kioku_version).toBeDefined();
+  expect(v.created).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  // Marker is at root, not inside the gitignored .kioku/.
+  expect(existsSync(join(vault, ".kioku", "vault-version.json"))).toBe(false);
+});
+
 test("init --hook writes the hook script and returns a real path (source mode)", () => {
   const r = fromSource(["init", "--vault", vault, "--hook"]);
   expect(r.ok).toBe(true);
