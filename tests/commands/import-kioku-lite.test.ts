@@ -114,3 +114,74 @@ test("missing source folder fails cleanly", () => {
   expect(r.ok).toBe(false);
   expect(r.exitCode).toBe(1);
 });
+
+// --- v1.1: tags become a tags:: line; recursive scan; tag-aware idempotency ---
+// beforeEach seeds FIXTURE_A/B into `source`; clear them so these tests control
+// the file/entry counts they assert on.
+function clearSource(): void {
+  for (const f of require("node:fs").readdirSync(source)) {
+    rmSync(join(source, f), { recursive: true, force: true });
+  }
+}
+const TELEGRAM_FIXTURE = `# Kioku — 2026-02-26
+
+---
+time: "2026-02-26T23:14:38.700935+07:00"
+mood: "concerned"
+tags: ['parenting', 'children', 'phong']
+---
+Con tôi 4 tuổi. Hay nóng tính mắng con.
+`;
+
+test("imports tags as a tags:: line; body verbatim; tags indexed", () => {
+  writeFileSync(join(source, "2026-02-26.md"), TELEGRAM_FIXTURE);
+  const r = run(["import", "--vault", vault, "--from-kioku-lite", source]);
+  expect(r.ok).toBe(true);
+
+  const note = readFileSync(dailyNotePath(vault, "2026-02-26"), "utf8");
+  // tags:: line written; verbatim body follows unchanged.
+  expect(note).toContain("tags:: parenting, children, phong");
+  expect(note).toContain("Con tôi 4 tuổi. Hay nóng tính mắng con.");
+
+  // Tags indexed (queryable via reflect later); body has no tags:: text leak.
+  const { openDb } = require("../../src/index/db.ts");
+  const db = openDb(vault);
+  const tags = db.query("SELECT tag FROM tags ORDER BY tag").all().map((r: any) => r.tag);
+  expect(tags).toEqual(["children", "parenting", "phong"]);
+  db.close();
+});
+
+test("recursive scan ingests subfolders in one command (decision #4)", () => {
+  clearSource();
+  writeFileSync(join(source, "2026-02-26.md"), TELEGRAM_FIXTURE);
+  const sub = join(source, "memory_pre_phase7");
+  require("node:fs").mkdirSync(sub, { recursive: true });
+  writeFileSync(
+    join(sub, "2026-02-22.md"),
+    `# Kioku — 2026-02-22\n\n---\ntime: "2026-02-22T10:00:00+07:00"\nmood: "proud"\n---\nKỷ niệm cũ.\n`,
+  );
+  const r = run(["import", "--vault", vault, "--from-kioku-lite", source]);
+  expect(r.ok).toBe(true);
+  expect(r.data.files).toBe(2); // top-level + subfolder file
+  expect(r.data.entries_created).toBe(2);
+});
+
+test("idempotent even with tags: re-run creates 0 (hash over original text)", () => {
+  clearSource();
+  writeFileSync(join(source, "2026-02-26.md"), TELEGRAM_FIXTURE);
+  const r1 = run(["import", "--vault", vault, "--from-kioku-lite", source]);
+  const r2 = run(["import", "--vault", vault, "--from-kioku-lite", source]);
+  expect(r1.data.entries_created).toBe(1);
+  expect(r2.data.entries_created).toBe(0);
+  expect(r2.data.skipped_duplicate).toBe(1);
+});
+
+test("non-diary .md in the folder (README) is ignored, not fatal", () => {
+  clearSource();
+  writeFileSync(join(source, "2026-02-26.md"), TELEGRAM_FIXTURE);
+  writeFileSync(join(source, "README.md"), "# Just docs\n\nNo memory blocks here.\n");
+  const r = run(["import", "--vault", vault, "--from-kioku-lite", source]);
+  expect(r.ok).toBe(true);
+  expect(r.data.entries_created).toBe(1); // only the real diary file
+  expect(r.data.skipped_bad).toBe(0); // README yields 0 blocks, not an error
+});

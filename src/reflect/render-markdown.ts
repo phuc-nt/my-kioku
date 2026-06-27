@@ -15,6 +15,12 @@ interface ReflectLike {
   mood_stats: { distribution: Record<string, number>; avg_intensity: number | null; trend: string };
   health_stats: { avg_sleep: number | null; exercise_days: number; mood_score_trend: string };
   insight_candidates: { kind: string; detail: string }[];
+  missing_emotional_relation: { entry_id: string; intensity: number; first_line: string }[];
+  relation_summary: {
+    joy: { target: string; count: number }[];
+    trigger: { target: string; count: number }[];
+  };
+  tags_to_convert: { tag: string; count: number }[];
   suggested_actions: string[];
 }
 
@@ -65,6 +71,22 @@ export function renderReflectMarkdown(r: ReflectLike): string {
     lines.push("## Possible aliases");
     for (const c of r.alias_candidates) {
       lines.push(`- [[${c.a}]] ≈ [[${c.b}]] (${c.similarity})`);
+    }
+    lines.push("");
+  }
+
+  lines.push("## Emotional relations");
+  const joy = r.relation_summary.joy.map((t) => `[[${t.target}]]×${t.count}`).join(", ") || "—";
+  const trig = r.relation_summary.trigger.map((t) => `[[${t.target}]]×${t.count}`).join(", ") || "—";
+  lines.push(`- brings joy: ${joy}`);
+  lines.push(`- triggers: ${trig}`);
+  lines.push(`- strong-mood entries missing a relation: ${r.missing_emotional_relation.length}`);
+  lines.push("");
+
+  if (r.tags_to_convert.length) {
+    lines.push("## Tags to convert");
+    for (const t of r.tags_to_convert) {
+      lines.push(`- [ ] \`${t.tag}\` (×${t.count}) → link or relation`);
     }
     lines.push("");
   }

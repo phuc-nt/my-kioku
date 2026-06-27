@@ -1,22 +1,30 @@
-// `my-kioku import --from-kioku-lite <folder>` — migrate legacy kioku-lite
-// memories. Source is a FOLDER of markdown files (validation decision), NOT the
-// SQLite DB. Each file holds blocks: `---\n<yaml>\n---\n<text>` after a heading.
+// `my-kioku import --from-kioku-lite <folder>` — migrate legacy kioku-lite /
+// Telegram-backup memories. Source is a FOLDER of markdown files (validation
+// decision), NOT the SQLite DB. The pure parsers live in
+// `import-kioku-lite-parser.ts`; this file is orchestration only.
 //
-// Decisions baked in (validation session 1):
+// Decisions baked in:
 //   - text imported VERBATIM, with NO wikilinks (KG is backfilled later by the
-//     agent via reflect lint — entries_without_links will surface them).
+//     agent via reflect lint — entries_without_links surfaces them).
+//   - per-block `tags:` (Python-list) → an inline `tags::` line on the entry
+//     (preserved for the living loop; hash stays over the ORIGINAL text so the
+//     tags prepend never breaks idempotency).
 //   - date = event_time (if present) else date(time); time HH:MM from `time`.
-//   - mood = single word, no intensity.
-//   - idempotent: hash(text block) → entry id recorded in .kioku/import-log.json.
+//   - recursive scan (validation decision #4): one import ingests subfolders too.
+//   - idempotent: hash(original text) → entry id recorded in .kioku/import-log.json.
 
-import { readdirSync, readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
+import { readdirSync, statSync, readFileSync, writeFileSync, existsSync, mkdirSync, renameSync } from "node:fs";
 import { join } from "node:path";
-import { createHash } from "node:crypto";
 import { ok, fail } from "../lib/json-output.ts";
 import { resolveVault, NO_VAULT_HINT, VAULT_INDEX_DIR } from "../config.ts";
 import { appendEntry } from "../vault/daily-note.ts";
 import { openDb, closeDb } from "../index/db.ts";
 import { fullReindex } from "../index/indexer.ts";
+import {
+  parseKiokuLiteFile,
+  resolveDateTime,
+  hashBlock,
+} from "./import-kioku-lite-parser.ts";
 
 export interface ImportArgs {
   vaultFlag?: string;
@@ -24,96 +32,26 @@ export interface ImportArgs {
   dryRun?: boolean;
 }
 
-interface Block {
-  time?: string; // ISO timestamp from `time:`
-  mood?: string;
-  eventTime?: string; // optional date-only override
-  text: string;
-}
-
-// A block opens with a `---` fence line IMMEDIATELY followed by a known yaml key.
-// Anchoring on this (not a bare `---`) means a stray `---` horizontal rule inside
-// diary text can NOT desync the block boundaries (C1) — it stays part of the text.
-const BLOCK_HEADER = /(?:^|\n)---\n(?=(?:time|mood|event_time):)/g;
-
-/** Parse one kioku-lite markdown file into blocks. Lenient: skip bad blocks. */
-export function parseKiokuLiteFile(raw: string): { blocks: Block[]; skipped: number } {
-  // Normalize CRLF first (C2) so all the \n-based regexes work on Windows files.
-  const normalized = raw.replace(/\r\n/g, "\n");
-  // Drop the leading "# Kioku Lite — ..." heading line if present.
-  const body = normalized.replace(/^#[^\n]*\n/, "");
-
-  // Find every block-header position; the block's content runs to the next header.
-  const headers: number[] = [];
-  let m: RegExpExecArray | null;
-  BLOCK_HEADER.lastIndex = 0;
-  while ((m = BLOCK_HEADER.exec(body)) !== null) {
-    // Position of the `---\n` (skip a leading \n captured by the alternation).
-    headers.push(m.index + (body[m.index] === "\n" ? 1 : 0));
+/** Recursively list *.md files under a folder (skips dotfiles). Lenient. */
+function listMarkdown(dir: string): string[] {
+  const out: string[] = [];
+  let entries: string[];
+  try {
+    entries = readdirSync(dir, { encoding: "utf8" });
+  } catch {
+    return out;
   }
-
-  const blocks: Block[] = [];
-  let skipped = 0;
-
-  for (let h = 0; h < headers.length; h++) {
-    const start = headers[h]!;
-    const end = h + 1 < headers.length ? headers[h + 1]! : body.length;
-    const chunk = body.slice(start, end); // "---\n<yaml>\n---\n<text>"
-    // Strip the opening fence, split yaml / text on the FIRST closing fence only.
-    const afterOpen = chunk.replace(/^---\n/, "");
-    const closeIdx = afterOpen.indexOf("\n---\n");
-    if (closeIdx < 0) {
-      skipped++;
-      continue;
+  for (const name of entries) {
+    if (name.startsWith(".")) continue;
+    const full = join(dir, name);
+    try {
+      if (statSync(full).isDirectory()) out.push(...listMarkdown(full));
+      else if (name.endsWith(".md")) out.push(full);
+    } catch {
+      /* vanished mid-scan — skip */
     }
-    const yaml = afterOpen.slice(0, closeIdx);
-    const text = afterOpen.slice(closeIdx + "\n---\n".length).replace(/\s+$/, "");
-    const meta = parseMiniYaml(yaml);
-    if (!meta.time && !meta.mood && !meta.event_time) {
-      skipped++;
-      continue;
-    }
-    if (text.trim() === "") {
-      skipped++;
-      continue;
-    }
-    blocks.push({
-      time: meta.time,
-      mood: meta.mood,
-      eventTime: meta.event_time,
-      text,
-    });
-  }
-  return { blocks, skipped };
-}
-
-/** Parse the tiny known YAML subset (time/mood/event_time, quoted values). */
-function parseMiniYaml(yaml: string): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const line of yaml.split("\n")) {
-    const m = /^(time|mood|event_time):\s*"?([^"]*)"?\s*$/.exec(line.trim());
-    if (m) out[m[1]!] = m[2]!;
   }
   return out;
-}
-
-/** date = event_time ?? date-part of time; HH:MM from time. */
-function resolveDateTime(b: Block): { date: string; time: string } | null {
-  const fromTime = b.time ? b.time.slice(0, 10) : undefined;
-  // Degrade a timestamped event_time to its date part (M2) before validating.
-  const date = (b.eventTime || fromTime)?.slice(0, 10);
-  if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
-  // HH:MM from the processing timestamp (best available clock for the entry).
-  let time = "00:00";
-  if (b.time) {
-    const tm = /T(\d{2}:\d{2})/.exec(b.time);
-    if (tm) time = tm[1]!;
-  }
-  return { date, time };
-}
-
-function hashBlock(text: string): string {
-  return createHash("sha256").update(text.trim()).digest("hex").slice(0, 16);
 }
 
 export function runImport(args: ImportArgs): never {
@@ -131,7 +69,7 @@ export function runImport(args: ImportArgs): never {
 
   const logPath = join(vault, VAULT_INDEX_DIR, "import-log.json");
   mkdirSync(join(vault, VAULT_INDEX_DIR), { recursive: true });
-  // Guard against a corrupt/partial log (H2) — treat unreadable as "nothing yet".
+  // Guard against a corrupt/partial log — treat unreadable as "nothing yet".
   let imported: Record<string, true> = {};
   if (existsSync(logPath)) {
     try {
@@ -140,24 +78,24 @@ export function runImport(args: ImportArgs): never {
         imported = parsed as Record<string, true>;
       }
     } catch {
-      /* corrupt log → start fresh; idempotency falls back to a clean re-import */
+      /* corrupt log → start fresh */
     }
   }
 
-  const files = readdirSync(args.source).filter((f) => f.endsWith(".md"));
+  const files = listMarkdown(args.source); // recursive (decision #4)
   let blocksTotal = 0, created = 0, skippedDup = 0, skippedBad = 0;
   const newLog: Record<string, true> = { ...imported };
 
-  // Persist the log atomically (temp + rename) so a crash can't corrupt it (L1).
+  // Persist the log atomically (temp + rename) so a crash can't corrupt it.
   const flushLog = (): void => {
     if (args.dryRun) return;
     const tmp = `${logPath}.tmp`;
     writeFileSync(tmp, JSON.stringify(newLog), "utf8");
-    require("node:fs").renameSync(tmp, logPath);
+    renameSync(tmp, logPath);
   };
 
-  for (const f of files) {
-    const raw = readFileSync(join(args.source, f), "utf8");
+  for (const path of files) {
+    const raw = readFileSync(path, "utf8");
     const { blocks, skipped } = parseKiokuLiteFile(raw);
     skippedBad += skipped;
     for (const b of blocks) {
@@ -167,21 +105,26 @@ export function runImport(args: ImportArgs): never {
         skippedBad++;
         continue;
       }
+      // Hash the ORIGINAL text (not the tags-augmented text) for stable dedup.
       const id = hashBlock(b.text);
       if (newLog[id]) {
         skippedDup++;
         continue;
       }
+      // Prepend a `tags::` line so the entry's tags are indexed (added line; the
+      // user's words follow unchanged — verbatim body preserved).
+      const text = b.tags && b.tags.length
+        ? `tags:: ${b.tags.join(", ")}\n${b.text}`
+        : b.text;
       try {
-        if (!args.dryRun) appendEntry(vault, dt.date, dt.time, b.text, b.mood);
+        if (!args.dryRun) appendEntry(vault, dt.date, dt.time, text, b.mood);
         newLog[id] = true;
         created++;
       } catch {
-        skippedBad++; // a single bad block must not abort the migration (H3)
+        skippedBad++; // a single bad block must not abort the migration
       }
     }
-    // Persist after each file so a mid-migration crash records progress (H3).
-    flushLog();
+    flushLog(); // record progress after each file
   }
 
   if (!args.dryRun) {

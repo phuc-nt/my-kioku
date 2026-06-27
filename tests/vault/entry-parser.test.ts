@@ -83,3 +83,88 @@ test("prose starting with mood:: free text is kept verbatim, not consumed", () =
     "mood:: today I want to talk about my mood swings",
   );
 });
+
+// --- v1.1: leading-field zone (mood + relations + tags) ---
+test("parses mood + relations + tags then verbatim text", () => {
+  const body =
+    "\n## 21:30\nmood:: happy/4\njoy:: [[Chạy bộ]], [[Mẹ]]\ntrigger:: [[Frustration]]\ntags:: career, health\nChạy bộ buổi sáng.";
+  const e = parseEntries(body)[0]!;
+  expect(e.mood).toBe("happy");
+  expect(e.intensity).toBe(4);
+  expect(e.relations).toEqual({
+    joy: ["Chạy bộ", "Mẹ"],
+    trigger: ["Frustration"],
+  });
+  expect(e.tags).toEqual(["career", "health"]);
+  expect(e.text).toBe("Chạy bộ buổi sáng.");
+});
+
+test("fields work in any order (relation before mood)", () => {
+  const body = "\n## 08:00\njoy:: [[X]]\nmood:: calm/3\nĐi dạo.";
+  const e = parseEntries(body)[0]!;
+  expect(e.mood).toBe("calm");
+  expect(e.relations).toEqual({ joy: ["X"] });
+  expect(e.text).toBe("Đi dạo.");
+});
+
+test("a v1 entry (mood only) has no relations/tags keys", () => {
+  const e = parseEntries("\n## 09:00\nmood:: tired/2\nMệt quá.")[0]!;
+  expect(e.relations).toBeUndefined();
+  expect(e.tags).toBeUndefined();
+  expect(e.text).toBe("Mệt quá.");
+});
+
+test("a no-field entry parses identically to v1", () => {
+  const e = parseEntries("\n## 09:00\nĐi làm bình thường.")[0]!;
+  expect(e.mood).toBeUndefined();
+  expect(e.relations).toBeUndefined();
+  expect(e.tags).toBeUndefined();
+  expect(e.text).toBe("Đi làm bình thường.");
+});
+
+// --- adversarial: prose must NOT be swallowed as a field ---
+test("prose line 'with:: my friend Hùng' stays verbatim, not a relation", () => {
+  const body = "\n## 09:00\nwith:: my friend Hùng came over";
+  const e = parseEntries(body)[0]!;
+  expect(e.relations).toBeUndefined();
+  expect(e.text).toBe("with:: my friend Hùng came over");
+});
+
+test("a field-shaped line AFTER body text is not consumed (zone already ended)", () => {
+  const body = "\n## 09:00\nmood:: happy/4\nĐi chơi vui.\njoy:: [[Sau]]";
+  const e = parseEntries(body)[0]!;
+  expect(e.mood).toBe("happy");
+  // joy:: appears after the body began → stays verbatim in text.
+  expect(e.relations).toBeUndefined();
+  expect(e.text).toBe("Đi chơi vui.\njoy:: [[Sau]]");
+});
+
+test("a blank line between mood and a relation ends the zone (relation is body)", () => {
+  const body = "\n## 09:00\nmood:: happy/4\n\njoy:: [[X]]";
+  const e = parseEntries(body)[0]!;
+  expect(e.mood).toBe("happy");
+  expect(e.relations).toBeUndefined();
+  expect(e.text).toBe("joy:: [[X]]");
+});
+
+test("tags:: [[x]] is NOT a tags line (stays verbatim)", () => {
+  const body = "\n## 09:00\ntags:: [[x]]";
+  const e = parseEntries(body)[0]!;
+  expect(e.tags).toBeUndefined();
+  expect(e.text).toBe("tags:: [[x]]");
+});
+
+test("tags are de-duped across lines, order preserved (consistent with relations)", () => {
+  const body = "\n## 09:00\ntags:: a, a, b\ntags:: b, c\nText.";
+  const e = parseEntries(body)[0]!;
+  expect(e.tags).toEqual(["a", "b", "c"]);
+});
+
+test("CRLF body does not leak \\r into entry text", () => {
+  const body = "\r\n## 09:00\r\nmood:: happy/4\r\njoy:: [[X]]\r\nDòng 1\r\nDòng 2\r\n";
+  const e = parseEntries(body)[0]!;
+  expect(e.mood).toBe("happy");
+  expect(e.relations).toEqual({ joy: ["X"] });
+  expect(e.text).toBe("Dòng 1\nDòng 2");
+  expect(e.text).not.toContain("\r");
+});

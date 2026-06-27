@@ -9,13 +9,25 @@ import { openDb, closeDb } from "../index/db.ts";
 import { syncIfStale } from "../index/lazy-sync.ts";
 import { ftsSearch } from "../search/fts-search.ts";
 import { expandByEntity, type EntityMatch } from "../search/entity-expansion.ts";
+import {
+  expandByRelation,
+  entriesWithRelationType,
+  RELATION_BONUS,
+} from "../search/relation-expansion.ts";
 import { buildDigest } from "../search/digest.ts";
+import {
+  hydrate,
+  inRange,
+  cmpRecency,
+  type HydratedEntry,
+} from "../search/hydrate.ts";
 import type { Database } from "bun:sqlite";
 
 export interface RecallArgs {
   vaultFlag?: string;
   query?: string;
   entity?: string;
+  relation?: string; // --relation <type> filter (joy/trigger/with/eases/...)
   digest?: boolean;
   from?: string;
   to?: string;
@@ -28,7 +40,6 @@ const ENTITY_BONUS = 0.3;
 interface ScoredHit {
   id: string;
   score: number;
-  entityHit: boolean;
 }
 
 export function runRecall(args: RecallArgs): never {
@@ -94,7 +105,7 @@ function runSearch(db: Database, args: RecallArgs, range: DateRange | null) {
     // for the best match, so normalizing |bm25|/max gives the best hit ~1.0 and
     // weaker hits proportionally less. (A sole hit scores 1.0.)
     const norm = maxBm25 > 0 ? Math.abs(h.bm25) / maxBm25 : 1;
-    scored.set(h.id, { id: h.id, score: norm, entityHit: false });
+    scored.set(h.id, { id: h.id, score: norm });
   }
 
   // Source 2: entity expansion. --entity is an explicit filter; otherwise the
@@ -103,20 +114,38 @@ function runSearch(db: Database, args: RecallArgs, range: DateRange | null) {
   const expansion = expandByEntity(db, expandText, range);
   for (const id of expansion.entryIds) {
     const existing = scored.get(id);
-    if (existing) {
-      existing.entityHit = true;
-      existing.score += ENTITY_BONUS;
-    } else {
-      scored.set(id, { id, score: ENTITY_BONUS, entityHit: true });
-    }
+    if (existing) existing.score += ENTITY_BONUS;
+    else scored.set(id, { id, score: ENTITY_BONUS });
   }
 
-  // When --entity is given with no query, results ARE the linked entries.
+  // Source 3: relation expansion. A typed relation is a stronger signal than a
+  // plain mention → RELATION_BONUS (> ENTITY_BONUS). Note: bonuses are ADDITIVE
+  // on top of FTS, so a relation hit (0.5) is guaranteed to outrank a plain-link
+  // hit (0.3) only AMONG non-FTS results; a strong FTS body match (~1.0) can
+  // still rank higher. Two modes:
+  //   - relation TARGET hits for the matched entities (always, with bonus);
+  //   - `--relation <type>` filter: entries having that relation type.
+  const relIds = new Set<string>();
+  // Reuse the entities already matched by expandByEntity (no second table scan).
+  const entityNames = expansion.entities.map((e) => e.name);
+  for (const id of expandByRelation(db, entityNames, args.relation, range)) relIds.add(id);
+  if (args.relation && entityNames.length === 0) {
+    // --relation with no entity → all entries having that relation type.
+    for (const id of entriesWithRelationType(db, args.relation, range)) relIds.add(id);
+  }
+  for (const id of relIds) {
+    const existing = scored.get(id);
+    if (existing) existing.score += RELATION_BONUS;
+    else scored.set(id, { id, score: RELATION_BONUS });
+  }
+
+  // `--relation` is a hard filter: restrict results to entries that matched it.
   let hits = [...scored.values()];
+  if (args.relation) hits = hits.filter((h) => relIds.has(h.id));
 
   // Apply the date window (if any) and hydrate.
   const hydrated = hits
-    .map((h) => hydrate(db, h))
+    .map((h) => hydrate(db, h.id, h.score))
     .filter((e): e is HydratedEntry => e !== null)
     .filter((e) => inRange(e.date, range));
 
@@ -126,39 +155,11 @@ function runSearch(db: Database, args: RecallArgs, range: DateRange | null) {
   return {
     query: args.query ?? null,
     entity: args.entity ?? null,
+    relation: args.relation ?? null,
     count: hydrated.length,
     results: hydrated.slice(0, limit),
     entity_context: expansion.entities.map(entityCtx),
   };
-}
-
-interface HydratedEntry {
-  id: string;
-  date: string;
-  time: string;
-  ordinal: number;
-  mood: string | null;
-  intensity: number | null;
-  body: string;
-  links: string[];
-  score: number;
-}
-
-function hydrate(db: Database, h: ScoredHit): HydratedEntry | null {
-  const row = db
-    .query<
-      { id: string; date: string; time: string; ordinal: number; mood: string | null; intensity: number | null; body: string },
-      [string]
-    >("SELECT id, date, time, ordinal, mood, intensity, body FROM entries WHERE id = ?")
-    .get(h.id);
-  if (!row) return null;
-  const links = db
-    .query<{ target: string }, [string]>(
-      "SELECT target FROM links WHERE entry_id = ?",
-    )
-    .all(h.id)
-    .map((r) => r.target);
-  return { ...row, links, score: Math.round(h.score * 1000) / 1000 };
 }
 
 function entityCtx(e: EntityMatch) {
@@ -168,14 +169,4 @@ function entityCtx(e: EntityMatch) {
     aliases: e.aliases,
     total_mentions_all_time: e.totalMentionsAllTime,
   };
-}
-
-function inRange(date: string, range: DateRange | null): boolean {
-  if (!range) return true;
-  return date >= range.from && date <= range.to;
-}
-
-function cmpRecency(a: HydratedEntry, b: HydratedEntry): number {
-  if (a.date !== b.date) return a.date < b.date ? 1 : -1;
-  return b.ordinal - a.ordinal;
 }

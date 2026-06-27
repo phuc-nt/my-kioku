@@ -1,5 +1,5 @@
 import { test, expect, afterEach, beforeEach } from "bun:test";
-import { mkdtempSync, rmSync, readFileSync } from "node:fs";
+import { mkdtempSync, rmSync, readFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { dailyNotePath, entityPath } from "../../src/vault/vault-paths.ts";
@@ -134,4 +134,53 @@ test("invalid --date is rejected", () => {
   const r = run(["remember", "--vault", vault, "--date", "2026-13-99", "hi"]);
   expect(r.ok).toBe(false);
   expect(r.exitCode).toBe(1);
+});
+
+// --- v1.1: relation + tags round-trip via --stdin ---
+test("relations/tags lines in stdin: verbatim body, parsed back, targets stubbed", () => {
+  const stdin = "joy:: [[Chạy bộ]], [[Mẹ]]\ntags:: health, morning\nChạy bộ buổi sáng, vui.";
+  const r = run(
+    ["remember", "--vault", vault, "--stdin", "--date", "2026-06-12", "--mood", "happy/4"],
+    stdin,
+  );
+  expect(r.ok).toBe(true);
+  // JSON result surfaces relations + tags.
+  expect(r.data.relations).toEqual({ joy: ["Chạy bộ", "Mẹ"] });
+  expect(r.data.tags).toEqual(["health", "morning"]);
+  // Relation targets auto-stubbed (Chạy bộ, Mẹ).
+  expect(r.data.stubs_created).toEqual(expect.arrayContaining(["Chạy bộ", "Mẹ"]));
+  expect(existsSync(entityPath(vault, "Mẹ"))).toBe(true);
+
+  // On disk: mood:: then joy:: then tags:: then verbatim body line.
+  const note = readFileSync(dailyNotePath(vault, "2026-06-12"), "utf8");
+  expect(note).toContain("mood:: happy/4\njoy:: [[Chạy bộ]], [[Mẹ]]\ntags:: health, morning\nChạy bộ buổi sáng, vui.");
+});
+
+test("entry with no relations/tags still works (v1 behavior)", () => {
+  const r = run(
+    ["remember", "--vault", vault, "--stdin", "--date", "2026-06-12"],
+    "Một ngày bình thường.",
+  );
+  expect(r.ok).toBe(true);
+  expect(r.data.relations).toEqual({});
+  expect(r.data.tags).toEqual([]);
+});
+
+test("C1: --mood + leading-blank stdin — reported relations match the INDEX", () => {
+  // The drift bug: remember used to re-parse `## time\n<text>` (no mood line) so a
+  // leading blank made joy:: a field; on disk the mood line pushed the blank AFTER
+  // it, ending the field zone → index saw joy:: as body. remember now returns the
+  // entry the indexer parsed, so the two agree.
+  const stdin = "\njoy:: [[Mẹ]]\nĐi bộ với mẹ.";
+  const r = run(
+    ["remember", "--vault", vault, "--stdin", "--date", "2026-06-12", "--mood", "happy/4"],
+    stdin,
+  );
+  expect(r.ok).toBe(true);
+  expect(r.data.relations).toEqual({ joy: ["Mẹ"] });
+
+  // The index must actually have the joy relation (no drift).
+  const hit = run(["recall", "--vault", vault, "--relation", "joy", "--entity", "Mẹ"]);
+  expect(hit.data.count).toBe(1);
+  expect(hit.data.results[0].relations.joy).toEqual(["Mẹ"]);
 });

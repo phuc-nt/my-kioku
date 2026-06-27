@@ -3,7 +3,8 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openDb } from "../../src/index/db.ts";
-import { fullReindex } from "../../src/index/indexer.ts";
+import { fullReindex, indexFile } from "../../src/index/indexer.ts";
+import { vaultFileFor } from "../../src/index/vault-walker.ts";
 import { appendEntry, setCheckinMeta } from "../../src/vault/daily-note.ts";
 import { ensureStub, updateMeta } from "../../src/vault/entity-note.ts";
 
@@ -155,4 +156,109 @@ test("openDb is idempotent (re-open keeps data)", () => {
   const n = db2.query<{ n: number }, []>("SELECT COUNT(*) n FROM entries").get();
   expect(n?.n).toBe(2);
   db2.close();
+});
+
+// --- v1.1: relations + tags indexing ---
+import { mkdirSync, writeFileSync } from "node:fs";
+function writeDaily(v: string, dateISO: string, content: string): void {
+  const [y, m] = dateISO.split("-") as [string, string, string];
+  const dir = join(v, "journal", y, m);
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, `${dateISO}.md`), content, "utf8");
+}
+
+test("indexes relations + tags rows for an entry", () => {
+  const v = makeVault();
+  writeDaily(
+    v,
+    "2026-06-12",
+    "# 2026-06-12\n\n## 21:30\nmood:: happy/4\njoy:: [[Chạy bộ]], [[Mẹ]]\ntrigger:: [[Áp lực]]\ntags:: career, health\nĂn phở.\n",
+  );
+  const db = openDb(v);
+  const stats = fullReindex(db, v);
+  expect(stats.relations).toBe(3); // joy×2 + trigger×1
+  expect(stats.tags).toBe(2);
+
+  const rels = db
+    .query<{ rel_type: string; target: string }, [string]>(
+      "SELECT rel_type, target FROM relations WHERE entry_id = ? ORDER BY rel_type, target",
+    )
+    .all("2026-06-12#0");
+  expect(rels).toEqual([
+    { rel_type: "joy", target: "Chạy bộ" },
+    { rel_type: "joy", target: "Mẹ" },
+    { rel_type: "trigger", target: "Áp lực" },
+  ]);
+  const tags = db
+    .query<{ tag: string }, [string]>("SELECT tag FROM tags WHERE entry_id = ? ORDER BY tag")
+    .all("2026-06-12#0")
+    .map((r) => r.tag);
+  expect(tags).toEqual(["career", "health"]);
+  db.close();
+});
+
+test("re-indexing a file does not duplicate relations/tags (removeFile clears first)", () => {
+  const v = makeVault();
+  writeDaily(v, "2026-06-12", "# 2026-06-12\n\n## 21:30\njoy:: [[X]]\ntags:: a\nText.\n");
+  const db = openDb(v);
+  fullReindex(db, v);
+  fullReindex(db, v); // second pass
+  expect(db.query<{ n: number }, []>("SELECT COUNT(*) n FROM relations").get()?.n).toBe(1);
+  expect(db.query<{ n: number }, []>("SELECT COUNT(*) n FROM tags").get()?.n).toBe(1);
+  db.close();
+});
+
+test("rebuild-identical: a v1 vault produces identical entries/links/fts after schema bump", () => {
+  const v = makeVault();
+  seed(v); // v1-style: mood-only entries + wikilinks, no relations/tags
+  const db = openDb(v);
+  fullReindex(db, v);
+  const dump = () => ({
+    entries: db.query<unknown, []>("SELECT id, mood, intensity, body FROM entries ORDER BY id").all(),
+    links: db.query<unknown, []>("SELECT entry_id, target FROM links ORDER BY entry_id, target").all(),
+    fts: db.query<unknown, []>("SELECT rowid, body FROM entries_fts ORDER BY rowid").all(),
+  });
+  const before = JSON.stringify(dump());
+  fullReindex(db, v);
+  const after = JSON.stringify(dump());
+  expect(after).toBe(before);
+  // And no relations/tags rows for a v1 vault.
+  expect(db.query<{ n: number }, []>("SELECT COUNT(*) n FROM relations").get()?.n).toBe(0);
+  expect(db.query<{ n: number }, []>("SELECT COUNT(*) n FROM tags").get()?.n).toBe(0);
+  db.close();
+});
+
+test("single-file re-index removes stale relations/tags but keeps OTHER files' rows (Invariant #4)", () => {
+  const v = makeVault();
+  writeDaily(v, "2026-06-10", "# 2026-06-10\n\n## 08:00\njoy:: [[A]], [[A2]]\ntags:: x, x2\nFile one.\n");
+  writeDaily(v, "2026-06-11", "# 2026-06-11\n\n## 09:00\njoy:: [[B]]\ntags:: y\nFile two.\n");
+  const db = openDb(v);
+  fullReindex(db, v);
+  expect(db.query<{ n: number }, []>("SELECT COUNT(*) n FROM relations").get()?.n).toBe(3);
+  expect(db.query<{ n: number }, []>("SELECT COUNT(*) n FROM tags").get()?.n).toBe(3);
+
+  // Edit ONLY file one (remove a relation + a tag), then re-index JUST that file
+  // via the single-file path (indexFile → removeFile) — the path lazy-sync uses.
+  writeDaily(v, "2026-06-10", "# 2026-06-10\n\n## 08:00\njoy:: [[A]]\ntags:: x\nFile one edited.\n");
+  const vf = vaultFileFor(v, "journal/2026/06/2026-06-10.md")!;
+  indexFile(db, vf);
+
+  // File one now has 1 rel + 1 tag (stale A2/x2 gone — no orphans).
+  expect(
+    db.query<{ n: number }, [string]>("SELECT COUNT(*) n FROM relations WHERE entry_id = ?").get("2026-06-10#0")?.n,
+  ).toBe(1);
+  expect(
+    db.query<{ n: number }, [string]>("SELECT COUNT(*) n FROM tags WHERE entry_id = ?").get("2026-06-10#0")?.n,
+  ).toBe(1);
+  // File TWO untouched — its rows survive the single-file re-index of file one.
+  expect(
+    db.query<{ target: string }, [string]>("SELECT target FROM relations WHERE entry_id = ?").get("2026-06-11#0")?.target,
+  ).toBe("B");
+  expect(
+    db.query<{ tag: string }, [string]>("SELECT tag FROM tags WHERE entry_id = ?").get("2026-06-11#0")?.tag,
+  ).toBe("y");
+  // No global orphans: totals reflect the edit.
+  expect(db.query<{ n: number }, []>("SELECT COUNT(*) n FROM relations").get()?.n).toBe(2);
+  expect(db.query<{ n: number }, []>("SELECT COUNT(*) n FROM tags").get()?.n).toBe(2);
+  db.close();
 });

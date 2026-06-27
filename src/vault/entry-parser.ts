@@ -8,12 +8,19 @@
 // heading-shaped line (e.g. a pasted "## 10:00 standup") is NOT split out — it
 // stays inside the entry text, preserving the verbatim contract.
 
+import { parseRelationLine, parseTagsLine } from "./inline-field-parser.ts";
+
 export interface ParsedEntry {
   time: string; // "HH:MM" as written in the heading
   ordinal: number; // 0-based position among all entries in the note
   mood?: string; // emotion word, e.g. "happy"
   intensity?: number; // 1-5 if present
-  text: string; // entry body VERBATIM, mood line removed
+  // Typed emotional edges: verb → wikilink targets, e.g. { joy: ["Chạy bộ"] }.
+  // Omitted entirely when the entry has no relation lines.
+  relations?: Record<string, string[]>;
+  // Plain string tags (NOT wikilinks). Omitted when absent.
+  tags?: string[];
+  text: string; // entry body VERBATIM, leading field lines removed
 }
 
 const HEADING_RE = /^##\s+(\d{1,2}:\d{2})\s*$/;
@@ -47,7 +54,9 @@ export function parseMoodValue(
 
 /** Split a daily-note body (frontmatter already removed) into entries. */
 export function parseEntries(body: string): ParsedEntry[] {
-  const lines = body.split("\n");
+  // Normalize CRLF so a Windows/Telegram-sourced note can't leave stray \r in
+  // entry text (the field matchers trim per-line, but the body would keep them).
+  const lines = body.replace(/\r\n/g, "\n").split("\n");
   const entries: ParsedEntry[] = [];
 
   let current: { time: string; lines: string[] } | null = null;
@@ -56,8 +65,8 @@ export function parseEntries(body: string): ParsedEntry[] {
   const flush = (): void => {
     if (!current) return;
     const ordinal = entries.length;
-    const { mood, intensity, text } = extractMood(current.lines);
-    entries.push({ time: current.time, ordinal, mood, intensity, text });
+    const fields = extractLeadingFields(current.lines);
+    entries.push({ time: current.time, ordinal, ...fields });
   };
 
   for (const line of lines) {
@@ -77,28 +86,74 @@ export function parseEntries(body: string): ParsedEntry[] {
   return entries;
 }
 
-/** Pull an optional leading mood line out of an entry's raw lines. */
-function extractMood(rawLines: string[]): {
+interface LeadingFields {
   mood?: string;
   intensity?: number;
+  relations?: Record<string, string[]>;
+  tags?: string[];
   text: string;
-} {
-  const lines = [...rawLines];
-  let firstIdx = 0;
-  while (firstIdx < lines.length && lines[firstIdx]!.trim() === "") firstIdx++;
+}
 
-  if (firstIdx < lines.length) {
-    const raw = lines[firstIdx]!.trim();
-    if (raw.startsWith("mood::")) {
-      const parsed = parseMoodValue(raw.slice("mood::".length).trim());
-      if (parsed) {
-        lines.splice(0, firstIdx + 1);
-        return { ...parsed, text: trimBlock(lines) };
+/**
+ * Consume the contiguous run of recognized field lines at the top of an entry
+ * (mood / relations / tags), in any order, stopping at the FIRST line that is not
+ * a recognized field. Everything from there on is the verbatim body — even if a
+ * later line happens to look field-shaped.
+ */
+function extractLeadingFields(rawLines: string[]): LeadingFields {
+  const lines = [...rawLines];
+  // Skip leading blank lines (the field zone starts at the first content line).
+  let i = 0;
+  while (i < lines.length && lines[i]!.trim() === "") i++;
+
+  let mood: string | undefined;
+  let intensity: number | undefined;
+  const relations: Record<string, string[]> = {};
+  let tags: string[] | undefined;
+
+  for (; i < lines.length; i++) {
+    const raw = lines[i]!.trim();
+    if (raw === "") break; // a blank line ends the field zone
+
+    // mood:: (only once; a second mood line is treated as body)
+    if (mood === undefined && raw.startsWith("mood::")) {
+      const m = parseMoodValue(raw.slice("mood::".length).trim());
+      if (m) {
+        mood = m.mood;
+        intensity = m.intensity;
+        continue;
       }
-      // "mood::" prefix but not a strict field → leave line in text verbatim.
+      break; // mood:: prefix but not a strict field → verbatim
     }
+
+    // tags:: (de-dup + order-preserve, consistent with relations below)
+    const t = parseTagsLine(raw);
+    if (t) {
+      tags ??= [];
+      for (const tag of t) if (!tags.includes(tag)) tags.push(tag);
+      continue;
+    }
+
+    // <verb>:: [[...]]
+    const rel = parseRelationLine(raw);
+    if (rel) {
+      const bucket = (relations[rel.verb] ??= []);
+      for (const target of rel.targets) {
+        if (!bucket.includes(target)) bucket.push(target);
+      }
+      continue;
+    }
+
+    break; // first non-field line → body begins here
   }
-  return { text: trimBlock(lines) };
+
+  const text = trimBlock(lines.slice(i));
+  const out: LeadingFields = { text };
+  if (mood !== undefined) out.mood = mood;
+  if (intensity !== undefined) out.intensity = intensity;
+  if (Object.keys(relations).length > 0) out.relations = relations;
+  if (tags && tags.length > 0) out.tags = tags;
+  return out;
 }
 
 /** Trim leading/trailing blank lines but keep internal formatting verbatim. */

@@ -12,6 +12,11 @@ import { runLint } from "../reflect/lint-checks.ts";
 import { findAliasCandidates } from "../reflect/alias-similarity.ts";
 import { buildMoodStats, buildHealthStats } from "../reflect/mood-stats.ts";
 import { detectInsights } from "../reflect/insight-candidates.ts";
+import {
+  findMissingRelations,
+  buildRelationSummary,
+  findUnconvertedTags,
+} from "../reflect/relation-checks.ts";
 import { renderReflectMarkdown } from "../reflect/render-markdown.ts";
 
 export interface ReflectArgs {
@@ -69,6 +74,9 @@ function assembleReport(db: ReturnType<typeof openDb>, range: DateRange) {
   const moodStats = buildMoodStats(db, range);
   const healthStats = buildHealthStats(db, range);
   const insightCandidates = detectInsights(db, range);
+  const missingRelations = findMissingRelations(db);
+  const relationSummary = buildRelationSummary(db, range);
+  const tagsToConvert = findUnconvertedTags(db);
 
   return {
     period: range,
@@ -77,7 +85,16 @@ function assembleReport(db: ReturnType<typeof openDb>, range: DateRange) {
     mood_stats: moodStats,
     health_stats: healthStats,
     insight_candidates: insightCandidates,
-    suggested_actions: deriveActions(lint, aliasCandidates, insightCandidates),
+    missing_emotional_relation: missingRelations,
+    relation_summary: relationSummary,
+    tags_to_convert: tagsToConvert,
+    suggested_actions: deriveActions(
+      lint,
+      aliasCandidates,
+      insightCandidates,
+      missingRelations,
+      tagsToConvert,
+    ),
   };
 }
 
@@ -86,6 +103,8 @@ function deriveActions(
   lint: ReturnType<typeof runLint>,
   aliases: ReturnType<typeof findAliasCandidates>,
   insights: ReturnType<typeof detectInsights>,
+  missingRelations: ReturnType<typeof findMissingRelations>,
+  tagsToConvert: ReturnType<typeof findUnconvertedTags>,
 ): string[] {
   const actions: string[] = [];
   if (lint.unknown_type_entities.length)
@@ -96,6 +115,10 @@ function deriveActions(
     actions.push(`fix ${lint.broken_wikilinks.length} broken wikilinks`);
   if (lint.entries_without_links.length)
     actions.push(`backfill links on ${lint.entries_without_links.length} entries`);
+  if (missingRelations.length)
+    actions.push(`backfill emotional relation on ${missingRelations.length} strong-mood entries`);
+  if (tagsToConvert.length)
+    actions.push(`convert ${tagsToConvert.length} tags to wikilinks/relations`);
   for (const ins of insights) actions.push(`consider insight: ${ins.kind}`);
   return actions;
 }

@@ -108,3 +108,56 @@ test("query with no match returns empty results, not an error", () => {
   expect(r.ok).toBe(true);
   expect(r.data.count).toBe(0);
 });
+
+// --- v1.1: relation filter, RELATION_BONUS, hydrate ---
+test("--relation joy --entity X returns the entry with that relation", () => {
+  remember("joy:: [[Mẹ]]\nChiều nay vui vì gọi cho mẹ.", ["--date", "2026-06-13", "--mood", "happy/4"]);
+  const r = run(["recall", "--vault", vault, "--relation", "joy", "--entity", "Mẹ"]);
+  expect(r.ok).toBe(true);
+  expect(r.data.relation).toBe("joy");
+  expect(r.data.count).toBe(1);
+  expect(r.data.results[0].relations.joy).toEqual(["Mẹ"]);
+});
+
+test("--relation filter excludes entries lacking that relation type", () => {
+  remember("joy:: [[Mẹ]]\nVui.", ["--date", "2026-06-13", "--mood", "happy/4"]);
+  remember("trigger:: [[Mẹ]]\nLo lắng.", ["--date", "2026-06-14", "--mood", "anxious/2"]);
+  const joy = run(["recall", "--vault", vault, "--relation", "joy", "--entity", "Mẹ"]);
+  expect(joy.data.count).toBe(1);
+  expect(joy.data.results[0].relations.joy).toEqual(["Mẹ"]);
+  const trig = run(["recall", "--vault", vault, "--relation", "trigger", "--entity", "Mẹ"]);
+  expect(trig.data.count).toBe(1);
+  expect(trig.data.results[0].relations.trigger).toEqual(["Mẹ"]);
+});
+
+test("relation-linked entry ranks above a plain-link entry for the same entity", () => {
+  // Both mention [[Phúc]]; only one has a joy:: relation → it should rank first.
+  remember("Gặp [[Phúc]] thoáng qua.", ["--date", "2026-06-10", "--mood", "neutral/3"]);
+  remember("joy:: [[Phúc]]\nĐi chơi với Phúc cả ngày.", ["--date", "2026-06-11", "--mood", "happy/5"]);
+  const r = run(["recall", "--vault", vault, "--entity", "Phúc"]);
+  expect(r.ok).toBe(true);
+  expect(r.data.results.length).toBeGreaterThanOrEqual(2);
+  // The relation-bearing entry (06-11) ranks first (RELATION_BONUS > ENTITY_BONUS).
+  expect(r.data.results[0].relations.joy).toEqual(["Phúc"]);
+});
+
+test("hydrate always includes relations + tags keys (stable schema, empty when none)", () => {
+  // The seeded v1 entries have no relations/tags.
+  const r = run(["recall", "--vault", vault, "Mẹ"]);
+  expect(r.ok).toBe(true);
+  for (const e of r.data.results) {
+    expect(e.relations).toBeDefined();
+    expect(e.tags).toBeDefined();
+    expect(typeof e.relations).toBe("object");
+    expect(Array.isArray(e.tags)).toBe(true);
+  }
+});
+
+test("--relation with no entity returns all entries having that relation type", () => {
+  remember("joy:: [[A]]\nx", ["--date", "2026-06-13", "--mood", "happy/4"]);
+  remember("joy:: [[B]]\ny", ["--date", "2026-06-14", "--mood", "happy/4"]);
+  remember("trigger:: [[C]]\nz", ["--date", "2026-06-15", "--mood", "anxious/2"]);
+  const r = run(["recall", "--vault", vault, "--relation", "joy"]);
+  expect(r.ok).toBe(true);
+  expect(r.data.count).toBe(2); // the two joy entries, not the trigger one
+});

@@ -114,14 +114,21 @@ export function runRemember(args: RememberArgs): never {
 
     // Append the entry (if any text).
     if (text !== "") {
-      const { ordinal, entryId } = appendEntry(vault, date, time, text, mood, intensity);
+      const { ordinal, entryId, entry } = appendEntry(vault, date, time, text, mood, intensity);
       touchedPaths.add(dailyNoteRelPath(date));
 
-      // Auto-stub linked entities not already known (by name or alias).
+      // Use the entry exactly as the indexer parsed it (appendEntry re-read the
+      // note) — never re-parse the raw text, which would drift from the on-disk
+      // mood/field ordering and report relations the index never wrote.
+      const relations = entry.relations ?? {};
+      const tags = entry.tags ?? [];
+
+      // Auto-stub linked entities (body wikilinks + relation targets) not already known.
       const known = knownEntityKeys(db);
-      const links = extractWikilinks(text);
+      const links = extractWikilinks(entry.text);
+      const relationTargets = Object.values(relations).flat();
       const stubsCreated: string[] = [];
-      for (const target of links) {
+      for (const target of [...links, ...relationTargets]) {
         if (known.has(target.toLowerCase())) continue;
         if (ensureStub(vault, target)) {
           stubsCreated.push(target);
@@ -137,6 +144,8 @@ export function runRemember(args: RememberArgs): never {
         mood: mood ?? null,
         intensity: intensity ?? null,
         links,
+        relations,
+        tags,
         stubs_created: stubsCreated,
       });
     }
