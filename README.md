@@ -102,6 +102,14 @@ insight candidates — each traceable to a real entry id. A scheduled agent read
 the `suggested_actions`, then classifies entities, backfills links, merges
 aliases, and writes insight notes. The vault improves itself over time.
 
+Reference agent harnesses live in [`tests/sim/`](./tests/sim) — they drive a small
+model (Qwen via OpenRouter) through each living-loop action (backfill links, extract
+relations, merge aliases, classify types). They are **verbatim-guarded at the code
+layer**: mentions are wrapped as `[[Entity|written-word]]` and a post-edit assertion
+rejects any edit that changed the user's words — because a small model cannot be
+trusted to preserve text. They run manually (need a key); the CLI needs none. Run on
+a temp vault copy first, dry-run before `--apply`.
+
 ## Design decisions (locked)
 
 - Bun + `bun:sqlite` (FTS5 built in), TypeScript, one runtime dep (`yaml`).

@@ -127,17 +127,30 @@ tests/
 │   └── ...
 ├── config.test.ts          # config resolution
 ├── dates.test.ts           # date utilities
-└── e2e/                    # full integration tests
-    ├── e2e-import-recall-reflect.test.ts
-    └── e2e-relations-and-tags.test.ts
+├── e2e/                    # full integration tests
+│   ├── e2e-import-recall-reflect.test.ts
+│   └── e2e-relations-and-tags.test.ts
+└── sim/                    # agent-simulation harnesses (manual; need OpenRouter key)
+    ├── openrouter-client.ts        # thin chat client (key from .env), per-call timeout
+    ├── agent-backfill-sim.ts       # tags/mentions → [[wikilinks]] + entity stubs
+    ├── agent-relation-sim.ts       # extract joy/trigger/with/eases relations
+    ├── agent-merge-sim.ts          # judge alias pairs → entity merge (conservative)
+    └── agent-classify-sim.ts       # assign entity type (person/place/event/...)
 ```
 
-**Total**: ~214 tests passing.
+**Total**: ~224 tests passing (unit + subprocess CLI + e2e). The `sim/` harnesses are
+NOT part of `bun test` — they require an OpenRouter key + network and are run manually
+to exercise the living loop with a small model. The CLI itself needs no key / no network.
 
 **Key patterns**:
 - **CLI subprocess tests**: spawn `bun run src/cli.ts ...` with temp vaults; validate JSON output
 - **Real-data tests**: no mocks; actual vault files created/read
 - **Adversarial review**: phase journals document test findings + edge cases caught
+- **Agent-sim harnesses** (`tests/sim/`): drive a small model (Qwen via OpenRouter) through
+  SKILL.md living-loop actions. Every harness is **verbatim-guarded at the code layer** —
+  it wraps mentions as `[[Entity|written-word]]` and a post-edit assertion rejects any edit
+  that changed the user's words (a small model cannot be trusted to preserve verbatim). DRY-RUN
+  by default; `--apply` writes. Run on a TEMP vault copy before production.
 
 ## CLI Routing
 
