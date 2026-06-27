@@ -102,3 +102,47 @@ test("every finding is traceable (no fabricated entries)", () => {
     expect(e.entry_id).toMatch(/^\d{4}-\d{2}-\d{2}#\d+$/);
   }
 });
+
+// --- v1.1: relation/tags reflect detectors ---
+test("missing_emotional_relation flags a strong-mood entry lacking a relation", () => {
+  remember("Hôm nay vui lắm nhưng quên ghi relation.", ["--date", "2026-06-10", "--mood", "happy/5"]);
+  const r = run(["reflect", "--vault", vault, "--since", "2020-01-01"]);
+  expect(r.ok).toBe(true);
+  expect(r.data.missing_emotional_relation.length).toBe(1);
+  expect(r.data.missing_emotional_relation[0].entry_id).toMatch(/2026-06-10#\d/);
+  expect(r.data.suggested_actions).toEqual(
+    expect.arrayContaining([expect.stringContaining("backfill emotional relation on 1")]),
+  );
+});
+
+test("relation_summary surfaces top joy/trigger targets", () => {
+  remember("joy:: [[Chạy bộ]]\nx", ["--date", "2026-06-10", "--mood", "happy/4"]);
+  remember("joy:: [[Chạy bộ]]\ny", ["--date", "2026-06-11", "--mood", "happy/4"]);
+  const r = run(["reflect", "--vault", vault, "--since", "2020-01-01"]);
+  expect(r.data.relation_summary.joy[0]).toEqual({ target: "Chạy bộ", count: 2 });
+});
+
+test("tags_to_convert surfaces tags without an entity + action present", () => {
+  remember("tags:: career, parenting\nMột ngày làm việc và chăm con.", ["--date", "2026-06-10"]);
+  const r = run(["reflect", "--vault", vault, "--since", "2020-01-01"]);
+  const surfaced = r.data.tags_to_convert.map((t: any) => t.tag);
+  expect(surfaced).toEqual(expect.arrayContaining(["career", "parenting"]));
+  expect(r.data.suggested_actions).toEqual(
+    expect.arrayContaining([expect.stringContaining("convert 2 tags")]),
+  );
+});
+
+test("a strong-mood entry WITH a relation is not flagged", () => {
+  remember("joy:: [[Mẹ]]\nVui vì mẹ.", ["--date", "2026-06-10", "--mood", "happy/5"]);
+  const r = run(["reflect", "--vault", vault, "--since", "2020-01-01"]);
+  expect(r.data.missing_emotional_relation.length).toBe(0);
+});
+
+test("--md renders the new emotional-relations + tags sections", () => {
+  remember("tags:: career\njoy:: [[Mẹ]]\nVui.", ["--date", "2026-06-10", "--mood", "happy/4"]);
+  const r = run(["reflect", "--vault", vault, "--since", "2020-01-01", "--md"]);
+  const md = require("node:fs").readFileSync(r.data.md_path, "utf8");
+  expect(md).toContain("## Emotional relations");
+  expect(md).toContain("## Tags to convert");
+  expect(md).toContain("[[Mẹ]]");
+});
