@@ -34,9 +34,12 @@ export function removeFile(db: Database, rel: string): void {
       .all(rel);
     const delFts = db.prepare("DELETE FROM entries_fts WHERE rowid = ?");
     for (const { rowid } of ids) delFts.run(rowid);
-    db.prepare(
-      "DELETE FROM links WHERE entry_id IN (SELECT id FROM entries WHERE file = ?)",
-    ).run(rel);
+    const byFile =
+      "entry_id IN (SELECT id FROM entries WHERE file = ?)";
+    db.prepare(`DELETE FROM links WHERE ${byFile}`).run(rel);
+    // Delete relations/tags BEFORE entries so the entry-id subquery still resolves.
+    db.prepare(`DELETE FROM relations WHERE ${byFile}`).run(rel);
+    db.prepare(`DELETE FROM tags WHERE ${byFile}`).run(rel);
     db.prepare("DELETE FROM entries WHERE file = ?").run(rel);
     db.prepare("DELETE FROM daily_meta WHERE file = ?").run(rel);
   } else if (kind === "entity") {
@@ -88,6 +91,10 @@ function indexJournal(
   );
   const insFts = db.prepare("INSERT INTO entries_fts(rowid, body) VALUES (?, ?)");
   const insLink = db.prepare("INSERT INTO links(entry_id, target) VALUES (?, ?)");
+  const insRel = db.prepare(
+    "INSERT INTO relations(entry_id, rel_type, target) VALUES (?, ?, ?)",
+  );
+  const insTag = db.prepare("INSERT INTO tags(entry_id, tag) VALUES (?, ?)");
 
   for (const e of parseEntries(body)) {
     const id = `${date}#${e.ordinal}`;
@@ -103,6 +110,11 @@ function indexJournal(
     );
     insFts.run(Number(info.lastInsertRowid), e.text);
     for (const target of extractWikilinks(e.text)) insLink.run(id, target);
+    // Emotional relations (typed edges) + plain tags from the entry's leading fields.
+    for (const [verb, targets] of Object.entries(e.relations ?? {})) {
+      for (const target of targets) insRel.run(id, verb, target);
+    }
+    for (const tag of e.tags ?? []) insTag.run(id, tag);
   }
 
   // Daily check-in frontmatter → daily_meta (unknown keys collected into extra).
@@ -142,6 +154,8 @@ export interface ReindexStats {
   entries: number;
   entities: number;
   links: number;
+  relations: number;
+  tags: number;
   skipped: { file: string; error: string }[];
   ms: number;
 }
@@ -158,7 +172,7 @@ export function fullReindex(db: Database, vault: string): ReindexStats {
 
   db.transaction(() => {
     db.exec(
-      "DELETE FROM entries_fts; DELETE FROM entries; DELETE FROM links; DELETE FROM entities; DELETE FROM daily_meta; DELETE FROM files;",
+      "DELETE FROM entries_fts; DELETE FROM entries; DELETE FROM links; DELETE FROM relations; DELETE FROM tags; DELETE FROM entities; DELETE FROM daily_meta; DELETE FROM files;",
     );
     for (const vf of files) {
       try {
@@ -177,6 +191,8 @@ export function fullReindex(db: Database, vault: string): ReindexStats {
     entries: count("SELECT COUNT(*) n FROM entries"),
     entities: count("SELECT COUNT(*) n FROM entities"),
     links: count("SELECT COUNT(*) n FROM links"),
+    relations: count("SELECT COUNT(*) n FROM relations"),
+    tags: count("SELECT COUNT(*) n FROM tags"),
     skipped,
     ms: Math.round(performance.now() - start),
   };
