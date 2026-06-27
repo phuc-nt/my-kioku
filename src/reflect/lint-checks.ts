@@ -2,6 +2,7 @@
 // heal (the "living loop"). Every finding is traceable to a file or entry id.
 
 import { Database } from "bun:sqlite";
+import { fold } from "../lib/diacritics.ts";
 
 export interface LintReport {
   unknown_type_entities: { name: string; file: string; mentions: number }[];
@@ -34,23 +35,34 @@ export function runLint(db: Database): LintReport {
           .get(e.name)?.n ?? 0,
     }));
 
-  // 2. Orphan entities: a note exists but nothing links to it.
-  const orphans = db
-    .query<{ name: string; file: string }, []>(
-      `SELECT e.name, e.file FROM entities e
-       LEFT JOIN links l ON l.target = e.name
-       WHERE l.target IS NULL`,
-    )
+  // Entity names, FOLDED, so link↔entity matching is case/diacritic-insensitive
+  // (consistent with recall's entity-expansion: [[Mẹ]] resolves to entity `mẹ`).
+  // SQL `=` is exact, so we compare folded sets in TS to avoid false orphans/broken.
+  const entityNames = db
+    .query<{ name: string }, []>("SELECT name FROM entities")
+    .all()
+    .map((r) => r.name);
+  const foldedEntities = new Set(entityNames.map(fold));
+  const allLinks = db
+    .query<{ target: string; entry_id: string }, []>("SELECT target, entry_id FROM links")
     .all();
+  const foldedLinkTargets = new Set(allLinks.map((l) => fold(l.target)));
 
-  // 3. Broken wikilinks: a link target with no matching entity note.
-  const broken = db
-    .query<{ target: string; entry_id: string }, []>(
-      `SELECT DISTINCT l.target, l.entry_id FROM links l
-       LEFT JOIN entities e ON e.name = l.target
-       WHERE e.name IS NULL`,
-    )
-    .all();
+  // 2. Orphan entities: a note exists but no link resolves to it (folded).
+  const orphans = db
+    .query<{ name: string; file: string }, []>("SELECT name, file FROM entities")
+    .all()
+    .filter((e) => !foldedLinkTargets.has(fold(e.name)));
+
+  // 3. Broken wikilinks: a link target with no entity note (folded). De-duped by target.
+  const broken: { target: string; entry_id: string }[] = [];
+  const seenBroken = new Set<string>();
+  for (const l of allLinks) {
+    if (foldedEntities.has(fold(l.target))) continue;
+    if (seenBroken.has(l.target)) continue;
+    seenBroken.add(l.target);
+    broken.push({ target: l.target, entry_id: l.entry_id });
+  }
 
   // 4. Entries with no wikilink at all (candidates for agent backfill).
   const noLinks = db
