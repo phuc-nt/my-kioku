@@ -8,7 +8,7 @@ import { join, dirname } from "node:path";
 import { VAULT_INDEX_DIR } from "../config.ts";
 
 /** Bump when the schema changes — triggers a full rebuild on next open. */
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 export function indexDbPath(vault: string): string {
   return join(vault, VAULT_INDEX_DIR, "index.db");
@@ -63,6 +63,21 @@ CREATE TABLE IF NOT EXISTS daily_meta(
 );
 CREATE INDEX IF NOT EXISTS idx_daily_meta_date ON daily_meta(date);
 
+CREATE TABLE IF NOT EXISTS relations(
+  entry_id TEXT,
+  rel_type TEXT,                  -- 'joy' | 'trigger' | 'with' | 'eases' | <free-form verb>
+  target TEXT                     -- normalized wikilink target (entity name)
+);
+CREATE INDEX IF NOT EXISTS idx_relations_target ON relations(target);
+CREATE INDEX IF NOT EXISTS idx_relations_entry ON relations(entry_id, rel_type);
+
+CREATE TABLE IF NOT EXISTS tags(
+  entry_id TEXT,
+  tag TEXT                        -- plain string, verbatim-trimmed
+);
+CREATE INDEX IF NOT EXISTS idx_tags_tag ON tags(tag);
+CREATE INDEX IF NOT EXISTS idx_tags_entry ON tags(entry_id);
+
 CREATE INDEX IF NOT EXISTS idx_entries_date ON entries(date);
 `;
 
@@ -115,6 +130,8 @@ function dropAll(db: Database): void {
     "entries_fts",
     "entries",
     "links",
+    "relations",
+    "tags",
     "entities",
     "daily_meta",
     "files",
