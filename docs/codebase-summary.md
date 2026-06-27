@@ -20,28 +20,31 @@ Generated from source audit of v1 implementation (150 passing tests, 8 phases co
 |------|-----|---------|
 | `daily-note.ts` | ~150 | appendEntry(), getDailyNote(), setCheckinMeta() — mutate daily notes |
 | `entity-note.ts` | ~100 | ensureStub(), mergeEntities() — entity file ops |
-| `entry-parser.ts` | ~100 | parseEntries(), parseMoodValue() — split `## HH:MM` sections, extract mood |
+| `entry-parser.ts` | ~150 | parseEntries(), parseMoodValue(), extractLeadingFields() — split entries, extract mood/relations/tags |
+| `inline-field-parser.ts` | ~60 | parseRelationLine(), parseTagsLine() — strict matchers for relation + tag lines |
 | `frontmatter.ts` | ~80 | parseFrontmatter(), renderFrontmatter() — YAML boundaries |
 | `wikilink-parser.ts` | ~60 | extractWikilinks() — find [[Name]] in text |
 | `vault-paths.ts` | ~40 | dailyNoteRelPath(), entityRelPath() — construct paths |
 
-**Key**: daily-note handles verbatim-safe append (heading after blank line only).
+**Key**: daily-note handles verbatim-safe append (heading after blank line only); inline-field-parser enforces strict shape on relations/tags so prose falls through to body.
 
 ### src/index/ (SQLite FTS5 layer)
 | File | LOC | Purpose |
 |------|-----|---------|
-| `db.ts` | ~120 | openDb(), closeDb(), SCHEMA, WAL checkpoint logic |
-| `indexer.ts` | ~200 | indexFile(), removeFile(), indexJournal(), indexEntity() — parse & load files |
+| `db.ts` | ~140 | openDb(), closeDb(), SCHEMA (8 tables incl. relations + tags), WAL checkpoint logic |
+| `indexer.ts` | ~200 | indexFile(), removeFile(), indexJournal(), indexEntity() — parse & load files; write relations + tags rows |
 | `lazy-sync.ts` | ~60 | needsReindex(), reindexIfNeeded() — mtime-based incremental trigger |
 | `vault-walker.ts` | ~80 | walkVault(), vaultFileFor() — enumerate vault structure |
 
-**Schema version**: SCHEMA_VERSION = 2; bumped = full rebuild.
+**Schema version**: SCHEMA_VERSION = 3 (v0.2.0+); includes relations + tags tables; bumped = full rebuild.
 
 ### src/search/ (Query layer)
 | File | LOC | Purpose |
 |------|-----|---------|
 | `fts-search.ts` | ~100 | ftsSearch() — BM25 on entries_fts with time filters |
 | `entity-expansion.ts` | ~80 | expandQuery() — find entities linked in query results |
+| `relation-expansion.ts` | ~60 | expandByRelation(), entriesWithRelationType() — find entries by emotion relation target/type; RELATION_BONUS (0.5) |
+| `hydrate.ts` | ~65 | hydrate() — inflate scored entry id into full result (mood, relations, tags always present) |
 | `digest.ts` | ~60 | digestRecent() — summarize last N days for session hooks |
 
 **Token**: unicode61 remove_diacritics 2 (matches fold() helper).
@@ -50,9 +53,10 @@ Generated from source audit of v1 implementation (150 passing tests, 8 phases co
 | File | LOC | Purpose |
 |------|-----|---------|
 | `lint-checks.ts` | ~150 | checkUnknownTypes(), orphanEntities(), brokenLinks(), unlinkedEntries(), untaggedEntries(), missingCheckins() |
-| `mood-stats.ts` | ~80 | analyzeMood(), analyzeHealth() — distribution, trends, avg intensity |
+| `mood-stats.ts` | ~80 | buildMoodStats(), buildHealthStats() — distribution, trends, avg intensity |
+| `relation-checks.ts` | ~130 | findMissingRelations(), buildRelationSummary(), findUnconvertedTags() — relation backfill debt, top targets, unconverted tags |
 | `alias-similarity.ts` | ~70 | findAliasCandidates() — Levenshtein + diacritics |
-| `insight-candidates.ts` | ~100 | findInsights() — spikes, patterns, frequency changes |
+| `insight-candidates.ts` | ~100 | detectInsights() — spikes, patterns, frequency changes |
 | `render-markdown.ts` | ~80 | renderReflectMarkdown() — format report for Obsidian |
 
 **All traceable**: every finding has entry_id or file reference.
@@ -61,11 +65,12 @@ Generated from source audit of v1 implementation (150 passing tests, 8 phases co
 | File | LOC | Purpose |
 |------|-----|---------|
 | `init.ts` | ~100 | Create vault structure; optionally copy SKILL.md, print hook setup |
-| `remember.ts` | ~180 | Append entry + auto-stub entities + index; one call, all operations |
-| `recall.ts` | ~150 | FTS search + entity expansion + time filters + digest mode |
-| `reflect.ts` | ~140 | Scan vault → lint + stats + insights; write markdown report |
+| `remember.ts` | ~180 | Append entry + auto-stub entities + index; one call, all operations; round-trip relations/tags |
+| `recall.ts` | ~200 | FTS search + entity expansion + relation expansion + time filters + digest mode; --relation <type> filter |
+| `reflect.ts` | ~110 | Scan vault → lint + stats + relation/tag detectors; 3 new detectors for living loop |
 | `reindex.ts` | ~40 | Drop index, rebuild from vault |
-| `import-kioku-lite.ts` | ~150 | Migrate kioku-lite markdown folder (idempotent, content-hash) |
+| `import-kioku-lite.ts` | ~100 | Orchestrate markdown folder migration; uses extracted parser |
+| `import-kioku-lite-parser.ts` | ~80 | Pure parsers for kioku-lite format; handles # Kioku — heading, Python-list tags, partial event_time fallback |
 | `entity-merge.ts` | ~120 | Fold entity B into A; rewrite links + merge metadata |
 | `watch.ts` | ~60 | Poll vault mtime; trigger reindex if changed |
 
@@ -90,6 +95,7 @@ Tests mirror src/ structure:
 tests/
 ├── vault/                  # vault-layer unit tests
 │   ├── entry-parser.test.ts
+│   ├── inline-field-parser.test.ts  # relation/tag line parsing
 │   ├── entity-note.test.ts
 │   └── ...
 ├── index/                  # index-layer tests
@@ -98,15 +104,18 @@ tests/
 │   ├── fts-vietnamese.test.ts  # diacritics folding
 │   └── ...
 ├── search/                 # search-layer tests
-│   └── fts-search.test.ts
+│   ├── fts-search.test.ts
+│   ├── relation-expansion.test.ts
+│   └── ...
 ├── reflect/                # reflect-layer tests
+│   ├── relation-checks.test.ts
 │   ├── alias-similarity.test.ts
 │   ├── insight-candidates.test.ts
 │   └── ...
 ├── commands/               # subprocess CLI tests (real vault)
 │   ├── remember.test.ts
-│   ├── recall.test.ts
-│   ├── reflect.test.ts
+│   ├── recall.test.ts (includes --relation tests)
+│   ├── reflect.test.ts (includes relation/tag detector tests)
 │   ├── entity-merge.test.ts
 │   ├── import-kioku-lite.test.ts
 │   └── ...
@@ -118,10 +127,11 @@ tests/
 ├── config.test.ts          # config resolution
 ├── dates.test.ts           # date utilities
 └── e2e/                    # full integration tests
-    └── e2e-import-recall-reflect.test.ts
+    ├── e2e-import-recall-reflect.test.ts
+    └── e2e-relations-and-tags.test.ts
 ```
 
-**Total**: 150+ tests passing.
+**Total**: ~214 tests passing.
 
 **Key patterns**:
 - **CLI subprocess tests**: spawn `bun run src/cli.ts ...` with temp vaults; validate JSON output

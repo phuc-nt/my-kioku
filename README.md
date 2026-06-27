@@ -58,7 +58,7 @@ my-kioku reflect --since 30d
 |---------|---------|
 | `init` | Create a vault (`journal/ entities/ insights/ .kioku/`). `--skill <dir>` copies the agent SKILL.md; `--hook` prints SessionStart hook setup. |
 | `remember` | Append a diary entry; auto-stub linked entities; index — all in one call. `--stdin`, `--mood`, `--checkin`, `--date`, `--time`. |
-| `recall` | Search: FTS5 + entity expansion + time filters. `--entity`, `--digest`, `--since/--from/--to`, `--limit`. |
+| `recall` | Search: FTS5 + entity expansion + relation filter + time filters. `--entity`, `--relation`, `--digest`, `--since/--from/--to`, `--limit`. |
 | `reflect` | Deterministic scan → lint + stats + insight candidates for the agent. `--since`, `--md`. |
 | `reindex` | Rebuild the disposable index from the vault. |
 | `import --from-kioku-lite <folder>` | Migrate legacy kioku-lite markdown (idempotent). `--dry-run`. |
@@ -78,9 +78,14 @@ All commands output a stable JSON envelope `{ok, data}` / `{ok:false, error, hin
 ```
 
 - **Daily note**: frontmatter holds health check-ins; each entry is a `## HH:MM`
-  section whose first line may be `mood:: emotion/intensity`. Text is **verbatim**.
+  section. The leading lines (after the heading) may carry inline fields —
+  `mood:: emotion/intensity`, typed emotional relations (`joy:: [[X]]`,
+  `trigger:: [[Y]]`, `with::`, `eases::`), and `tags:: a, b`. The rest is **verbatim**.
 - **Entity note**: `[[wikilinks]]` from entries point here; frontmatter `type:`
   classifies it (person/place/event/activity/thing/unknown).
+- **Emotional relations** are markdown-native typed edges (not a graph DB): the
+  `joy::`/`trigger::`/… lines are derived into a rebuildable `relations` table, so
+  `recall --relation joy --entity "Mẹ"` answers "what brought joy with Mẹ?".
 - **The graph is derived from wikilinks.** Imported entries start link-less; the
   agent grows the graph over time via `reflect` (the "living loop").
 

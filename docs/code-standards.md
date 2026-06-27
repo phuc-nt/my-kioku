@@ -134,14 +134,16 @@ function parse(text: string, opts: { strict?: boolean; trim?: boolean } = {}) { 
 
 ### 1. The Verbatim Invariant
 **Entry text is NEVER mutated beyond trailing-whitespace trim.**
+**Relation/tags inline fields are ADDED lines, never edits to user's words.**
 
-Why: User pastes content into entries; we must preserve exact wording for recall accuracy.
+Why: User pastes content into entries; we must preserve exact wording for recall accuracy. Inline fields (mood/relations/tags) are a strict-shape structured layer *above* the body — they are lines we add, not prose rewrites.
 
 Enforcement:
 - appendEntry() writes heading AFTER blank line → prose headings stay in text
-- Parser only splits on heading + preceding blank line
+- Parser only splits on heading + preceding blank line; extracts field lines from the top
+- Leading-field zone (mood/relations/tags) is STRICT SHAPE — lines that don't match the exact pattern fall through to verbatim body
 - No text normalization (punctuation, casing, etc.)
-- Tests in entry-parser.test.ts validate heading-shaped prose is NOT split
+- Tests validate heading-shaped prose is NOT split and that loose prose like "with:: my friend Hùng" stays verbatim (not consumed as a field)
 
 ### 2. Diacritics Alignment
 **fold() at app layer MUST match FTS tokenizer behavior (unicode61 remove_diacritics 2).**
@@ -190,45 +192,26 @@ CREATE TABLE entries(
 CREATE INDEX idx_entries_date ON entries(date);
 ```
 
-### 5. FTS Sync in Transaction
-**entries + entries_fts rows written in same db.transaction().**
+### 5. FTS Sync & WAL Checkpoint
+**entries + entries_fts rows written in same db.transaction(); closeDb() uses TRUNCATE.**
 
-Guarantee: If process crashes mid-write, both roll back; no drift.
+Guarantee: Crash mid-write → both roll back, no drift. Each CLI command opens/closes; without checkpoint, -wal accumulates. TRUNCATE folds it back promptly.
 
 ```typescript
+// In transaction
 db.transaction(() => {
   db.prepare("INSERT INTO entries(id, file, ...) VALUES (...)").run(...);
   db.prepare("INSERT INTO entries_fts(rowid, body) VALUES (...)").run(...);
 })();
+
+// On close
+db.exec("PRAGMA wal_checkpoint(TRUNCATE);");
 ```
 
-### 6. WAL Checkpoint on Close
-**closeDb() explicitly checkpoints WAL before returning.**
+### 6. All Lint Traceable
+**Every suggested action has entry_id or file reference** so agent can jump to source.
 
-Why: Each CLI command opens/closes db. Without checkpoint, -wal file grows across invocations.
-
-```typescript
-export function closeDb(db: Database): void {
-  db.exec("PRAGMA optimize;");
-  db.exec("PRAGMA wal_checkpoint(RESTART);");
-  db.close();
-}
-```
-
-### 7. All Lint Traceable
-**Every suggested action in reflect output has entry_id or file reference.**
-
-Why: Agent must be able to jump to the source when reviewing suggested actions.
-
-Example:
-```typescript
-// ✅ Good: entry_id traceable
-{
-  kind: "broken_wikilink",
-  detail: "[[Hùng2]] → no entity found",
-  entry_id: "2026-06-12#0",  // ← can jump to entry
-}
-```
+Example: `{ kind: "broken_wikilink", entry_id: "2026-06-12#0" }`
 
 ## Testing Standards
 
@@ -266,19 +249,15 @@ it("does not split on heading-shaped prose in entry text", () => {
 ## Database Standards
 
 ### Schema
-- **Version bump = full rebuild** (SCHEMA_VERSION in db.ts)
+- **Version bump = full rebuild** (SCHEMA_VERSION in db.ts; currently 3)
 - **No migrations**: drop old, create new, reindex from vault
-- **Indexes on foreign keys**: idx_links_target, idx_links_entry, idx_daily_meta_date, idx_entries_date
+- **Derived tables**: relations + tags are rebuildable from vault inline fields (same as links)
+- **Indexes on foreign keys**: idx_links_target, idx_links_entry, idx_relations_target, idx_relations_entry, idx_tags_tag, idx_tags_entry, idx_daily_meta_date, idx_entries_date
 
 ### Transactions
 - **Atomic writes**: indexFile() wraps all changes in db.transaction()
 - **No FK constraints enabled**: referential integrity maintained by hand (simpler logic)
 
-### WAL Mode
-```typescript
-db.exec("PRAGMA journal_mode = WAL;");  // concurrent reads while writing
-db.exec("PRAGMA wal_checkpoint(RESTART);"); // on close
-```
 
 ## Performance Considerations
 
@@ -296,24 +275,16 @@ db.exec("PRAGMA wal_checkpoint(RESTART);"); // on close
 
 ## Integration Checklist
 
-When adding a new command:
-1. Add routing to cli.ts (parseArgs + case statement)
-2. Create commands/{name}.ts; export run{Name}() function
-3. Validate vault path (resolveVault)
-4. Open db with openDb(vault)
-5. Run business logic (vault ops → index updates → search/reflect)
-6. Close db with closeDb(db) (checkpoints WAL)
-7. Return JSON {ok, data} or {ok: false, error, hint}
-8. Add subprocess CLI test in tests/commands/{name}.test.ts
+When adding a new command: (1) add routing to cli.ts, (2) create commands/{name}.ts, (3) validate vault path, (4) open db, (5) run logic, (6) closeDb(db), (7) return JSON, (8) add test.
 
 ## Common Pitfalls
 
-| Mistake | Why It Matters | Solution |
-|---------|---|---|
-| Mutating entry text beyond trim | Violates verbatim contract | Only trailing-whitespace trim in parser |
-| Using toISOString() for dates | Converts to UTC, breaks tz-aware logic | Use todayISO() or Date constructor |
-| FTS + entries out of sync | Stale index, wrong results | Write both in same transaction |
-| Not checkpointing WAL | -wal file accumulates | Call closeDb() which checkpoints |
-| Entity key case-sensitive | Aliases don't match "Hùng" vs "hung" | Always fold() entity keys + query |
-| Lint findings without entry_id | Agent can't jump to source | Every suggested action traces back |
-| Mocking vault in tests | Miss real edge cases | Use subprocess tests with temp vaults |
+| Mistake | Solution |
+|---------|----------|
+| Mutating entry text | Trailing-whitespace trim only |
+| toISOString() for dates | Use todayISO() (local, not UTC) |
+| FTS + entries unsync'd | Write both in transaction |
+| Not calling closeDb() | Checkpoints WAL; prevents -wal accumulation |
+| Entity key case-sensitive | Always fold() keys + query |
+| Lint without entry_id | Every action must trace back |
+| Mocking vault in tests | Use subprocess tests with temp vaults |

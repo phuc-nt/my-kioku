@@ -4,6 +4,33 @@ All notable changes to this project are documented here. Format based on
 [Keep a Changelog](https://keepachangelog.com/); versions follow
 [Semantic Versioning](https://semver.org/).
 
+## [0.2.0] - 2026-06-27
+
+Emotional relations (markdown-native typed edges) + richer migration. Additive: a
+v0.1 vault re-indexes unchanged (schema bump 2→3 is a drop-rebuild).
+
+### Added
+
+- **Emotional relations** — typed edges written as inline entry lines after `mood::`:
+  `joy::`, `trigger::`, `with::`, `eases::` (free-form, value = `[[wikilinks]]`).
+  Stored in a derived, rebuildable `relations` table — not a graph DB.
+- **`recall --relation <type>`** — filter by relation type (combine with `--entity`,
+  `--since`, query). Relation targets rank above plain mentions (`RELATION_BONUS`).
+  Recall output now always includes `relations` and `tags` per entry.
+- **`tags::` inline field** — plain comma-separated tags, indexed in a `tags` table.
+- **Reflect detectors** — `missing_emotional_relation` (strong-mood entries lacking a
+  relation), `relation_summary` (top joy/trigger targets), `tags_to_convert` (tags not
+  yet entities) → new `suggested_actions` for the living loop.
+- **Migration upgrades** — `import --from-kioku-lite` now parses the `# Kioku —`
+  heading and per-block `tags: [...]` (Python-list) into `tags::` lines, scans
+  subfolders recursively, and falls back to the timestamp date when `event_time` is
+  partial. Validated on a real 442-block Telegram backup (155 entries, 0 dropped).
+- SKILL.md teaches the relation/tags protocol; docs updated.
+
+### Changed
+
+- `SCHEMA_VERSION` 2 → 3 (adds `relations` + `tags` tables; one-time index rebuild).
+
 ## [0.1.0] - 2026-06-26
 
 First release. An Obsidian markdown vault is the source of truth; SQLite FTS5 is a
