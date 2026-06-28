@@ -125,6 +125,9 @@ The integration surface is the CLI's stable JSON envelope (`{ok, data}` /
 `{ok:false, error, hint}`) — spawn the binary, parse stdout. There's no library API on
 purpose. `init --skill <dir>` drops the agent protocol (`SKILL.md`) into your framework.
 
+- **[Agent setup guide](docs/agent-setup.md)** — a setup checklist for an automation /
+  manager agent installing & configuring my-kioku for another agent (install → init →
+  skill → hook → cron, with verify steps).
 - **[Integration guide](docs/integration-guide.md)** — the generic contract: commands,
   flags, exact JSON shapes, the verbatim rule. Integrate from the doc alone.
 - **[openclaw integration](docs/openclaw-integration.md)** — concrete recipe: a
