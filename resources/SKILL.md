@@ -12,6 +12,11 @@ the database). Three commands cover everything. **One situation → one command.
 3. **Mood** is one free word, optional 1–5 intensity: `happy`, `tired/2`, `buồn/4`.
 4. **Always use `--stdin` with a heredoc** for text. It avoids every shell-quoting
    problem with quotes, apostrophes, newlines, and Vietnamese diacritics.
+5. **Keep the person's language.** Write entries and entity/relation names in the
+   exact language and words they used — including mixed Vietnamese-English ("họp
+   với team về deadline"). Don't translate either way. Proper nouns stay as written
+   (`[[Techbase]]`, `[[Mẹ]]`). The ONLY English-vocabulary field is the entity
+   `type:` (person/place/event/activity/thing) — that's a fixed tag, not a name.
 
 ## Remember (write)
 
@@ -110,3 +115,5 @@ Candidates are SUGGESTIONS — you decide. Every finding cites a real file/entry
 - ❌ Adding `/intensity` the person didn't express — mood word alone is fine.
 - ❌ Inventing a `joy::`/`trigger::` relation the person didn't actually express —
   only write one when the cause is clear; otherwise let `reflect` remind you.
+- ❌ Translating mixed-language entries to one language, or renaming an English
+  proper noun to Vietnamese (or vice-versa). Mirror what the person wrote.

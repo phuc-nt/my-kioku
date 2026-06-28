@@ -4,6 +4,35 @@ All notable changes to this project are documented here. Format based on
 [Keep a Changelog](https://keepachangelog.com/); versions follow
 [Semantic Versioning](https://semver.org/).
 
+## [0.3.0] - 2026-06-28
+
+Unicode-robust ingest & query (EN-aware, Vietnamese-first) + recall UX. Index-only
+behavior; markdown stays verbatim. Schema bumps (4→6) are disposable drop-rebuilds, so
+existing vaults auto-migrate on next open with zero data risk.
+
+### Added
+
+- **Prefix search (search-as-you-type)** — the last query token (folded length ≥4)
+  matches as a prefix: `recall "deadl"` finds "deadline". Shorter complete words match
+  exactly so a single-syllable Vietnamese word (phở→"pho") doesn't over-match (phòng).
+- **Phrase boost** — an entry containing the whole query as a contiguous phrase ranks
+  above one with the same words scattered (additive `PHRASE_BONUS`).
+- **Agent language rule** — the shipped `SKILL.md` now tells the agent to keep the
+  person's language verbatim, including mixed Vietnamese-English, and never translate
+  names; only the entity `type:` field uses the fixed English vocabulary.
+
+### Fixed
+
+- **NFC canonicalization across ingest & query** — Vietnamese text in decomposed
+  (NFD) form broke things: the query tokenizer split a syllable mid-character (a
+  combining mark is not a letter, so "đình" became "đi"+"nh" → 0 hits), and on the
+  ingest side a decomposed verb/mood failed the strict field regexes (relation/mood
+  silently dropped) while link targets and entity names byte-mismatched across forms
+  (broken graph edges). All structured values and the FTS index are now NFC-normalized;
+  markdown bodies remain verbatim. Entity auto-stub dedup switches to `fold()` (NFC +
+  accent + case), consistent with recall. Real-data E2E: NFD "gia đình" 0→20; existing
+  queries unchanged; entity join identical for composed and decomposed forms.
+
 ## [0.2.1] - 2026-06-27
 
 Vietnamese `đ`-fold in full-text search. Index-only fix — markdown untouched; the

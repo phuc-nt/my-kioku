@@ -37,21 +37,24 @@ Generated from source audit of v1 implementation (150 passing tests, 8 phases co
 | `lazy-sync.ts` | ~60 | needsReindex(), reindexIfNeeded() — mtime-based incremental trigger |
 | `vault-walker.ts` | ~80 | walkVault(), vaultFileFor() — enumerate vault structure |
 
-**Schema version**: SCHEMA_VERSION = 3 (v0.2.0+); includes relations + tags tables; bumped = full rebuild.
+**Schema version**: SCHEMA_VERSION = 6 (v0.3.0+); includes relations + tags tables;
+v4 standalone folded FTS (đ-fold), v5 NFC-in-fold, v6 NFC-canonical join keys. Bumped
+on schema shape OR stored-canonical-form change = full rebuild (lazy-sync is per-file).
 
 ### src/search/ (Query layer)
 | File | LOC | Purpose |
 |------|-----|---------|
-| `fts-search.ts` | ~100 | ftsSearch() — BM25 on entries_fts with time filters |
+| `fts-search.ts` | ~105 | ftsSearch() BM25 + sanitizeFtsQuery (prefix `*` on ≥4-char last token) + foldedPhrase/ftsPhraseMatch (contiguous-phrase boost) |
 | `entity-expansion.ts` | ~80 | expandQuery() — find entities linked in query results |
 | `relation-expansion.ts` | ~60 | expandByRelation(), entriesWithRelationType() — find entries by emotion relation target/type; RELATION_BONUS (0.5) |
 | `hydrate.ts` | ~65 | hydrate() — inflate scored entry id into full result (mood, relations, tags always present) |
 | `digest.ts` | ~60 | digestRecent() — summarize last N days for session hooks |
 
 **Token**: unicode61 remove_diacritics 2. The tokenizer strips combining marks but
-NOT `đ`, so `entries_fts` is a **standalone** FTS storing `fold(body)` (đ→d) and the
-query is folded too — a diacritic-free "gia dinh" matches "gia đình". Display always
-reads `entries.body` (untouched); FTS rowid == entries.rowid keeps them 1:1.
+NOT `đ`, so `entries_fts` is a **standalone** FTS storing `fold(body)` (NFC + strip
+marks + đ→d) and the query is folded too — a diacritic-free "gia dinh" matches "gia
+đình", and a decomposed (NFD) form matches a composed one. Display always reads
+`entries.body` (untouched); FTS rowid == entries.rowid keeps them 1:1.
 
 ### src/reflect/ (Deterministic analysis)
 | File | LOC | Purpose |
@@ -85,11 +88,15 @@ reads `entries.body` (untouched); FTS rowid == entries.rowid keeps them 1:1.
 |------|-----|---------|
 | `json-output.ts` | ~30 | ok(), fail() — stable JSON envelope |
 | `dates.ts` | ~80 | todayISO(), nowHHMM(), isValidISODate() — local TZ (NOT toISOString) |
-| `diacritics.ts` | ~15 | fold() — normalize + strip combining marks + đ→d |
+| `diacritics.ts` | ~20 | fold() — NFC → NFD → strip combining marks → đ→d → lowercase (single normalize point) |
 | `checkin-parser.ts` | ~60 | parseCheckin() — "sleep_hours=7,exercise=chạy" → object |
 | `link-rewriter.ts` | ~70 | rewriteLinks() — find & replace wikilinks |
 
-**Diacritics**: fold() matches FTS tokenizer; entity expansion uses it.
+**Diacritics**: fold() is the single normalize point — FTS index, FTS query,
+entity expansion, and ingest dedup all route through it. NFC-first so composed/
+decomposed forms collapse identically before mark-stripping. Ingest also NFCs the
+structured join keys (entity names, link/relation targets) so they byte-match; bodies
+stay verbatim.
 
 ## Test Structure
 
