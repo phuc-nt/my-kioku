@@ -20,12 +20,21 @@ makes it searchable.
 
 ## Install
 
-Requires [Bun](https://bun.sh) ≥ 1.3.
+Requires the [Bun](https://bun.sh) runtime (≥ 1.3) — my-kioku uses `bun:sqlite` and
+other Bun APIs, so it does **not** run on Node (running it under Node prints a clear
+"requires Bun" message and exits).
+
+```bash
+bunx my-kioku <command>      # run ad-hoc, no install
+bun add -g my-kioku          # or install globally → `my-kioku <command>`
+```
+
+From source (development):
 
 ```bash
 bun install
-bun run build          # → dist/my-kioku (single binary)
-# or run from source: bun run src/cli.ts <command>
+bun run src/cli.ts <command>          # run from source
+bun run build                         # → dist/my-kioku (optional single binary)
 ```
 
 ## Quick start
@@ -109,6 +118,17 @@ layer**: mentions are wrapped as `[[Entity|written-word]]` and a post-edit asser
 rejects any edit that changed the user's words — because a small model cannot be
 trusted to preserve text. They run manually (need a key); the CLI needs none. Run on
 a temp vault copy first, dry-run before `--apply`.
+
+## Integrate with your agent
+
+The integration surface is the CLI's stable JSON envelope (`{ok, data}` /
+`{ok:false, error, hint}`) — spawn the binary, parse stdout. There's no library API on
+purpose. `init --skill <dir>` drops the agent protocol (`SKILL.md`) into your framework.
+
+- **[Integration guide](docs/integration-guide.md)** — the generic contract: commands,
+  flags, exact JSON shapes, the verbatim rule. Integrate from the doc alone.
+- **[openclaw integration](docs/openclaw-integration.md)** — concrete recipe: a
+  SessionStart hook (`recall --digest`) + a nightly cron `reflect` feeding the agent.
 
 ## Design decisions (locked)
 

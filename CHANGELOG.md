@@ -4,6 +4,26 @@ All notable changes to this project are documented here. Format based on
 [Keep a Changelog](https://keepachangelog.com/); versions follow
 [Semantic Versioning](https://semver.org/).
 
+## [0.3.1] - 2026-06-28
+
+Publish & integration readiness. No runtime behavior change for existing users.
+
+### Added
+
+- **npm publish readiness** — `publishConfig.access=public`; `prepublishOnly` runs
+  `tsc` + the test suite so a broken state can't publish; `typescript` is now a pinned
+  devDependency (so `tsc` resolves during the npm lifecycle). The package ships TS
+  source; `bunx my-kioku` runs it directly (no build step). Verified the tarball is
+  secret-free (no `.env`) and contains only `src/`, `resources/`, README, LICENSE,
+  NOTICE, package.json.
+- **Bun-runtime guard** — `cli.ts` is a tiny entry that checks for Bun, then dynamically
+  imports the real logic; running under Node prints a clear "requires Bun" message and
+  exits non-zero instead of a cryptic loader error.
+- **Integration docs** — `docs/integration-guide.md` (generic agent contract: the JSON
+  envelope, commands/flags, exact data shapes, verbatim rule) and
+  `docs/openclaw-integration.md` (SessionStart hook + cron reflect recipe). README gains
+  an "Integrate with your agent" section and a Bun-required install story.
+
 ## [0.3.0] - 2026-06-28
 
 Unicode-robust ingest & query (EN-aware, Vietnamese-first) + recall UX. Index-only
