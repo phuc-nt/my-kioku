@@ -33,8 +33,11 @@ export function expandByEntity(
   range: DateRange | null = null,
   perEntityLimit = 20,
 ): ExpansionResult {
+  // NFC first so a combining mark in decomposed input can't act as a separator and
+  // split a syllable (see sanitizeFtsQuery for the same guard).
   const queryTokens = new Set(
     rawQuery
+      .normalize("NFC")
       .split(/[^\p{L}\p{N}]+/u)
       .map((t) => fold(t.trim()))
       .filter((t) => t.length > 0),

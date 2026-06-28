@@ -60,3 +60,13 @@ test("FTS does not match unrelated terms", () => {
   expect(search(v, "phở")).toHaveLength(0);
   expect(search(v, "gia dinh")).toHaveLength(0); // not in this entry
 });
+
+test("FTS matches NFD-formed body via a no-accent query (NFC guard)", () => {
+  const v = makeVault();
+  // Write a body in DECOMPOSED (NFD) form — fold() must canonicalize so the index
+  // matches the same query that hits the composed form.
+  appendEntry(v, "2026-06-12", "07:00", "Gọi cho gia đình".normalize("NFD"), "calm", 3);
+  expect(search(v, "gia dinh")).toHaveLength(1);
+  expect(search(v, "gia đình")).toHaveLength(1);
+  expect(search(v, "gia đình".normalize("NFD"))).toHaveLength(1);
+});

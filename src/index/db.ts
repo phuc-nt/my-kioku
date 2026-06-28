@@ -8,7 +8,7 @@ import { join, dirname } from "node:path";
 import { VAULT_INDEX_DIR } from "../config.ts";
 
 /** Bump when the schema changes — triggers a full rebuild on next open. */
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 5;
 
 export function indexDbPath(vault: string): string {
   return join(vault, VAULT_INDEX_DIR, "index.db");

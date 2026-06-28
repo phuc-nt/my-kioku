@@ -21,7 +21,11 @@ export function sanitizeFtsQuery(raw: string): string {
   // Keep Unicode letters/numbers; everything else is a separator. This strips
   // every FTS operator while preserving Vietnamese words. Each token is FOLDED
   // (đ→d + strip marks) to match the folded index, so "gia dinh" hits "gia đình".
+  // NFC FIRST: in decomposed (NFD) input a combining mark is neither \p{L} nor
+  // \p{N}, so it would act as a separator and split a word mid-character
+  // ("đình" → "đi"+"nh"). Canonicalizing to NFC keeps each syllable intact.
   const tokens = raw
+    .normalize("NFC")
     .split(/[^\p{L}\p{N}]+/u)
     .map((t) => fold(t.trim()))
     .filter((t) => t.length > 0);
