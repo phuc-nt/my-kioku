@@ -9,6 +9,7 @@ import { todayISO, nowHHMM, isValidISODate } from "../lib/dates.ts";
 import { appendEntry, setCheckinMeta } from "../vault/daily-note.ts";
 import { ensureStub } from "../vault/entity-note.ts";
 import { extractWikilinks } from "../vault/wikilink-parser.ts";
+import { fold } from "../lib/diacritics.ts";
 import { parseMoodValue, MIN_INTENSITY, MAX_INTENSITY } from "../vault/entry-parser.ts";
 import { parseCheckin } from "../lib/checkin-parser.ts";
 import { dailyNoteRelPath, entityRelPath } from "../vault/vault-paths.ts";
@@ -42,10 +43,10 @@ function knownEntityKeys(db: ReturnType<typeof openDb>): Set<string> {
       "SELECT name, aliases FROM entities",
     )
     .all()) {
-    keys.add(row.name.toLowerCase());
+    keys.add(fold(row.name));
     try {
       for (const a of JSON.parse(row.aliases) as string[]) {
-        keys.add(String(a).toLowerCase());
+        keys.add(fold(String(a)));
       }
     } catch {
       /* ignore malformed aliases JSON */
@@ -128,11 +129,13 @@ export function runRemember(args: RememberArgs): never {
       const links = extractWikilinks(entry.text);
       const relationTargets = Object.values(relations).flat();
       const stubsCreated: string[] = [];
+      // Dedup by fold() (NFC + accent + case) so "Mẹ"/"me"/decomposed-"Mẹ" are one
+      // entity — consistent with knownEntityKeys above and entity-expansion matching.
       for (const target of [...links, ...relationTargets]) {
-        if (known.has(target.toLowerCase())) continue;
+        if (known.has(fold(target))) continue;
         if (ensureStub(vault, target)) {
           stubsCreated.push(target);
-          known.add(target.toLowerCase());
+          known.add(fold(target));
           touchedPaths.add(entityRelPath(target));
         }
       }

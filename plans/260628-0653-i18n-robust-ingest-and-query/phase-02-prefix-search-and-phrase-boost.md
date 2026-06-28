@@ -62,7 +62,9 @@ rank above entries with the same words scattered.
 5. `bunx tsc --noEmit` + `bun test`.
 
 ## Success Criteria
-- [ ] `recall "deadl"` finds "deadline"; `recall "phở Quảng A"` finds "Quảng An".
+- [ ] `recall "deadl"` finds "deadline" (prefix needs a ≥4-char folded last token;
+      MIN_PREFIX_LEN=4 so a short complete word like "phở"→"pho" stays exact and does
+      not flood with "phòng"). A 1–3 char tail (e.g. "...An") matches exactly, no `*`.
 - [ ] Contiguous-phrase entry ranks above scattered-words entry for the same query.
 - [ ] Injection cases (`*`, `"`, `^`, NEAR, mixed đ) still neutralized — no crash.
 - [ ] All prior queries unchanged (regression E2E: `gia dinh`→20, `phở`→7, `Hung`→2).

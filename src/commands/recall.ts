@@ -7,7 +7,7 @@ import { resolveVault, NO_VAULT_HINT } from "../config.ts";
 import { parseSince, isValidISODate, type DateRange } from "../lib/dates.ts";
 import { openDb, closeDb } from "../index/db.ts";
 import { syncIfStale } from "../index/lazy-sync.ts";
-import { ftsSearch } from "../search/fts-search.ts";
+import { ftsSearch, ftsPhraseMatch } from "../search/fts-search.ts";
 import { expandByEntity, type EntityMatch } from "../search/entity-expansion.ts";
 import {
   expandByRelation,
@@ -36,6 +36,10 @@ export interface RecallArgs {
 }
 
 const ENTITY_BONUS = 0.3;
+// Contiguous-phrase match bonus. Small but enough to lift an entry that contains the
+// whole query as a phrase above one with the same words scattered (both already share
+// the normalized FTS score), without overriding entity/relation signals.
+const PHRASE_BONUS = 0.2;
 
 interface ScoredHit {
   id: string;
@@ -106,6 +110,16 @@ function runSearch(db: Database, args: RecallArgs, range: DateRange | null) {
     // weaker hits proportionally less. (A sole hit scores 1.0.)
     const norm = maxBm25 > 0 ? Math.abs(h.bm25) / maxBm25 : 1;
     scored.set(h.id, { id: h.id, score: norm });
+  }
+
+  // Source 1b: phrase boost. An entry containing the full query as a CONTIGUOUS
+  // phrase ranks above one with the same words scattered. Additive on the FTS score;
+  // only applies to entries already in the FTS result set (no-op for <2-token queries).
+  if (args.query) {
+    for (const id of ftsPhraseMatch(db, args.query)) {
+      const existing = scored.get(id);
+      if (existing) existing.score += PHRASE_BONUS;
+    }
   }
 
   // Source 2: entity expansion. --entity is an explicit filter; otherwise the

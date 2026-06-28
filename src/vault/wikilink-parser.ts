@@ -11,11 +11,16 @@ function stripCode(text: string): string {
   return text.replace(FENCE_RE, "").replace(INLINE_CODE_RE, "");
 }
 
-/** Normalize a wikilink target: take the part before `|`, trim whitespace. */
+/**
+ * Normalize a wikilink target: NFC-canonicalize, take the part before `|`, trim.
+ * NFC matters because the target is a GRAPH-JOIN KEY (links.target = entities.name);
+ * a target pasted in decomposed form must byte-match the (NFC) entity name, or the
+ * edge silently breaks. Display text (after `|`) is dropped here anyway.
+ */
 export function normalizeTarget(raw: string): string {
   const pipe = raw.indexOf("|");
   const target = pipe >= 0 ? raw.slice(0, pipe) : raw;
-  return target.trim();
+  return target.normalize("NFC").trim();
 }
 
 /**

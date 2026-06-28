@@ -24,7 +24,10 @@ export interface RelationLine {
  * This rejects `with:: my friend Hùng` (prose) but accepts `with:: [[Hùng]]`.
  */
 export function parseRelationLine(line: string): RelationLine | null {
-  const m = VERB_PREFIX.exec(line.trim());
+  // NFC first: VERB_PREFIX uses \p{L}, and an NFD combining mark is not a letter,
+  // so a decomposed VI verb ("nhớ" as n+h+ớ→o+◌̛+◌̉) would stop the verb capture
+  // before `::` and silently drop the relation. Canonicalizing recombines it.
+  const m = VERB_PREFIX.exec(line.normalize("NFC").trim());
   if (!m) return null;
   const verb = m[1]!.toLowerCase();
   const value = m[2]!;
@@ -49,7 +52,9 @@ export function parseRelationLine(line: string): RelationLine | null {
  * `tags:: [[x]]` line is ambiguous → not a tags line, falls through to verbatim).
  */
 export function parseTagsLine(line: string): string[] | null {
-  const trimmed = line.trim();
+  // NFC so the same tag in composed/decomposed form stores as one string (the tags
+  // table keys on the raw value; cross-form would create duplicates).
+  const trimmed = line.normalize("NFC").trim();
   if (!trimmed.startsWith("tags::")) return null;
   const value = trimmed.slice("tags::".length);
   if (value.includes("[[")) return null;

@@ -7,8 +7,13 @@ import { existsSync, mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { VAULT_INDEX_DIR } from "../config.ts";
 
-/** Bump when the schema changes — triggers a full rebuild on next open. */
-export const SCHEMA_VERSION = 5;
+/**
+ * Bump when the schema shape OR the stored canonical form of any value changes —
+ * triggers a full rebuild on next open (the only automatic, vault-wide reindex;
+ * lazy-sync is per-file/mtime and would otherwise leave a mixed index).
+ * v6: graph-join keys (entity names, link/relation targets) are now stored NFC.
+ */
+export const SCHEMA_VERSION = 6;
 
 export function indexDbPath(vault: string): string {
   return join(vault, VAULT_INDEX_DIR, "index.db");

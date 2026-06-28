@@ -142,7 +142,11 @@ function indexEntity(
   vf: VaultFile,
   meta: Record<string, unknown>,
 ): void {
-  const name = basename(vf.path, ".md");
+  // NFC the entity name: it is the GRAPH-JOIN KEY (entities.name = links.target).
+  // A filesystem may hand back a decomposed (NFD) basename (e.g. APFS); link targets
+  // are stored NFC (normalizeTarget), so the name must canonicalize too or the join
+  // silently breaks.
+  const name = basename(vf.path, ".md").normalize("NFC");
   const type = typeof meta.type === "string" ? meta.type : "unknown";
   const aliases = Array.isArray(meta.aliases)
     ? JSON.stringify((meta.aliases as unknown[]).map(String))

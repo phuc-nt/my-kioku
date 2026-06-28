@@ -20,6 +20,17 @@ test("parseMoodValue rejects non-field shapes (returns null)", () => {
   expect(parseMoodValue("happy/")).toBeNull(); // trailing slash, no number
 });
 
+test("parseMoodValue accepts a Vietnamese mood in decomposed (NFD) form", () => {
+  // Without NFC the combining mark in "khỏe" (NFD) breaks the \p{L} capture → null.
+  expect(parseMoodValue("khỏe".normalize("NFD"))).toEqual({
+    mood: "khỏe".normalize("NFC"),
+  });
+  expect(parseMoodValue("khỏe/4".normalize("NFD"))).toEqual({
+    mood: "khỏe".normalize("NFC"),
+    intensity: 4,
+  });
+});
+
 test("parse single entry with mood", () => {
   const body = "# 2026-06-12\n\n## 21:30\nmood:: happy/4\nĂn tối với [[Hùng]].";
   const entries = parseEntries(body);

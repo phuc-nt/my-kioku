@@ -40,7 +40,10 @@ export const MAX_INTENSITY = 5;
 export function parseMoodValue(
   value: string,
 ): { mood: string; intensity?: number } | null {
-  const m = MOOD_LINE_RE.exec(`mood:: ${value}`);
+  // NFC first: MOOD_LINE_RE uses \p{L}; a decomposed VI emotion ("khỏe") would have
+  // a combining mark that is not a letter, failing the capture and silently dropping
+  // the mood. Canonicalizing recombines the syllable.
+  const m = MOOD_LINE_RE.exec(`mood:: ${value.normalize("NFC")}`);
   if (!m) return null;
   const mood = m[1] ?? "";
   if (m[2] === undefined) return { mood };

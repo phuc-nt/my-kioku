@@ -36,3 +36,11 @@ test("normalizeTarget trims and strips display", () => {
 test("no links returns empty", () => {
   expect(extractWikilinks("plain text no links")).toEqual([]);
 });
+
+test("normalizeTarget canonicalizes to NFC (graph-join key must byte-match entity)", () => {
+  // A target pasted decomposed must equal the (NFC) entity name, or the edge breaks.
+  expect(normalizeTarget("Mẹ".normalize("NFD"))).toBe("Mẹ".normalize("NFC"));
+  expect(extractWikilinks("[[Mẹ]]".normalize("NFD"))).toEqual([
+    "Mẹ".normalize("NFC"),
+  ]);
+});

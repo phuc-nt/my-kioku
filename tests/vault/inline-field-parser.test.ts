@@ -49,6 +49,13 @@ test("rejects a non-field line", () => {
   expect(parseRelationLine("")).toBeNull();
 });
 
+test("parses a Vietnamese-diacritic verb in decomposed (NFD) form", () => {
+  // "nhớ" in NFD has a combining mark that is not \p{L}; without NFC the verb
+  // capture would stop early and the relation would be silently dropped.
+  const line = "nhớ:: [[Mẹ]]".normalize("NFD");
+  expect(parseRelationLine(line)).toEqual({ verb: "nhớ", targets: ["Mẹ"] });
+});
+
 // --- parseTagsLine ---
 
 test("parses a comma tags list", () => {
@@ -74,4 +81,11 @@ test("rejects an empty tags list", () => {
 
 test("rejects a non-tags line", () => {
   expect(parseTagsLine("joy:: [[X]]")).toBeNull();
+});
+
+test("canonicalizes tag values to NFC (composed == decomposed)", () => {
+  const nfc = parseTagsLine("tags:: sức khỏe");
+  const nfd = parseTagsLine("tags:: sức khỏe".normalize("NFD"));
+  expect(nfd).toEqual(nfc);
+  expect(nfd?.[0]).toBe("sức khỏe".normalize("NFC"));
 });
