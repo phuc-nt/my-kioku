@@ -4,7 +4,7 @@ All notable changes to this project are documented here. Format based on
 [Keep a Changelog](https://keepachangelog.com/); versions follow
 [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.4.0] - 2026-06-29
 
 Semantic-recall lift, no new dependency. A Phase-0 spike (real install of a local
 embedding model + the benchmark VI corpus) showed a vector layer could not preserve
@@ -191,4 +191,5 @@ disposable index that rebuilds 100% from the vault. No vector search.
 - Validated end-to-end against real data: 177 legacy memory blocks → 68 unique entries,
   0 parse failures.
 
+[0.4.0]: https://github.com/phuc-nt/my-kioku/releases/tag/v0.4.0
 [0.1.0]: https://github.com/phuc-nt/my-kioku/releases/tag/v0.1.0
