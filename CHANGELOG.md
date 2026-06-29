@@ -15,6 +15,11 @@ dependency cost.
 
 ### Added
 
+- **Richer `recall --digest` entries.** Each `recent_entries` item gains a `snippet`
+  (first ~2 lines, ≤280 chars) so a SessionStart hook injects usable context in ONE call
+  instead of having to recall the entry again to see past line 1. `first_line` (≤100 chars)
+  is kept for back-compat; the digest stays within its token budget (snippet bounded,
+  5-entry cap). Display-only — derived from the verbatim body, markdown unchanged.
 - **Superseded-fact / latest-fact.** A `superseded:: <date#ordinal>` leading field marks
   an entry as replaced by a newer one (strict shape — a free-text `superseded:: …` stays
   verbatim in the body). `recall` demotes a superseded entry **as a tiebreak** so a

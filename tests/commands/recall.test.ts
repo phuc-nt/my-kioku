@@ -92,8 +92,46 @@ test("--digest returns a compact summary", () => {
   expect(r.data.mood_summary.distribution).toMatchObject({ happy: 1, calm: 1, tired: 1 });
   expect(r.data.checkin.days_logged).toBeGreaterThanOrEqual(1);
   expect(Array.isArray(r.data.active_entities)).toBe(true);
+  // recent_entries carry BOTH the back-compat first_line and the richer snippet.
+  const e0 = r.data.recent_entries[0];
+  expect(typeof e0.first_line).toBe("string");
+  expect(typeof e0.snippet).toBe("string");
+  expect(e0.snippet.length).toBeGreaterThan(0);
   // Compactness: serialized digest should be well under ~2KB for this fixture.
   expect(JSON.stringify(r.data).length).toBeLessThan(2000);
+});
+
+test("--digest snippet carries line-2 substance (one-call context, not just line 1)", () => {
+  // An entry whose real content is on line 2 — first_line alone is uninformative.
+  remember(
+    "Đi cà phê sáng.\nSau đó họp với [[Hùng]] về tăng lương và dự án [[Tiki]].",
+    ["--date", "2026-06-13", "--mood", "happy/4"],
+  );
+  const r = run(["recall", "--vault", vault, "--digest", "--since", "2026-06-01"]);
+  const e = r.data.recent_entries.find((x: { date: string }) => x.date === "2026-06-13");
+  expect(e.first_line).toBe("Đi cà phê sáng."); // line 1 only
+  expect(e.snippet).toContain("họp với [[Hùng]]"); // snippet reaches line 2
+  expect(e.snippet).toContain("Tiki");
+});
+
+test("--digest snippet is bounded (token budget) for a long entry", () => {
+  remember("x ".repeat(400).trim(), ["--date", "2026-06-14", "--mood", "calm/3"]);
+  const r = run(["recall", "--vault", vault, "--digest", "--since", "2026-06-01"]);
+  const e = r.data.recent_entries.find((x: { date: string }) => x.date === "2026-06-14");
+  expect(e.snippet.length).toBeLessThanOrEqual(281); // SNIPPET_MAX(280) + ellipsis
+});
+
+test("--digest stays within budget even with 5 long multi-line entries (worst case)", () => {
+  // Worst case for the snippet budget: 5 entries each with a ~280-char line 2.
+  const long = "y".repeat(280);
+  for (let i = 15; i <= 19; i++) {
+    remember(`Dòng một.\n${long}`, ["--date", `2026-06-${i}`, "--mood", "calm/3"]);
+  }
+  const r = run(["recall", "--vault", vault, "--digest", "--since", "2026-06-01"]);
+  // 5 snippets × ~281 + scaffold must still be a compact session-context object.
+  expect(JSON.stringify(r.data).length).toBeLessThan(2500);
+  expect(r.data.recent_entries).toHaveLength(5);
+  for (const e of r.data.recent_entries) expect(e.snippet.length).toBeLessThanOrEqual(281);
 });
 
 test("manual edit to vault is visible on next recall (lazy sync)", () => {

@@ -94,6 +94,10 @@ translate). A term that appears nowhere returns an empty result (no fabricated h
 
 `data` (`--digest`): `{ period{from,to}, mood_summary, checkin, active_entities[],
 recent_entries[] }` — a small object meant to be injected as session context.
+`recent_entries[]` items are `{ date, time, mood, first_line, snippet }`: `snippet` is
+the first ~2 lines (≤280 chars) so the hook injects usable context in ONE call (no second
+recall); `first_line` is the ≤100-char first line, kept for back-compat. Both are derived
+from the verbatim body for display — the markdown is unchanged.
 
 ### `reflect` — the living loop (run on a schedule)
 
