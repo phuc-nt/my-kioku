@@ -130,6 +130,14 @@ only its disposable index and structured keys, never the markdown you wrote.
 | `reindex` | Rebuild the disposable SQLite index from the vault. |
 | `import --from-kioku-lite <folder>` | Migrate legacy kioku-lite markdown (`--dry-run`). |
 | `entity merge "B" --into "A"` | Fold one entity into another (`--dry-run`). |
+| `forget <id>` / `forget --entity "X"` | Delete an entry block (privacy). `--redact` keeps the heading + mood/relations/tags and blanks only the body; `--dry-run` previews. |
 | `watch [--interval 30]` | Foreground loop keeping the index in sync with manual edits. |
+
+`forget` `data`: `{ dry_run, mode:"delete"|"redact", removed_count, files_touched[],
+targets:[{entry_id, file, date, time}], note }`. The `note` warns that deleting an entry
+**renumbers** later `date#ordinal` ids in that file — re-query rather than reuse an old id.
+Markdown is the source of truth, so this is a file edit + reindex; the vault's git history
+retains removed content (audit), so true hard-erasure needs a git history rewrite (`--redact`
+is the in-repo-safe alternative).
 
 For the concrete openclaw recipe, see [openclaw-integration.md](./openclaw-integration.md).

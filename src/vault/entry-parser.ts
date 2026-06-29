@@ -9,6 +9,7 @@
 // stays inside the entry text, preserving the verbatim contract.
 
 import { parseRelationLine, parseTagsLine } from "./inline-field-parser.ts";
+import { entryRanges } from "./entry-block-range.ts";
 
 export interface ParsedEntry {
   time: string; // "HH:MM" as written in the heading
@@ -23,7 +24,6 @@ export interface ParsedEntry {
   text: string; // entry body VERBATIM, leading field lines removed
 }
 
-const HEADING_RE = /^##\s+(\d{1,2}:\d{2})\s*$/;
 // A mood field is only recognized in a STRICT shape: a single emotion token
 // (letters/diacritics/digits/_/-) optionally followed by /intensity. This keeps
 // free prose that merely starts with "mood::" from being swallowed as a field.
@@ -60,33 +60,13 @@ export function parseEntries(body: string): ParsedEntry[] {
   // Normalize CRLF so a Windows/Telegram-sourced note can't leave stray \r in
   // entry text (the field matchers trim per-line, but the body would keep them).
   const lines = body.replace(/\r\n/g, "\n").split("\n");
-  const entries: ParsedEntry[] = [];
-
-  let current: { time: string; lines: string[] } | null = null;
-  let prevBlank = true; // start-of-body counts as "preceded by blank"
-
-  const flush = (): void => {
-    if (!current) return;
-    const ordinal = entries.length;
-    const fields = extractLeadingFields(current.lines);
-    entries.push({ time: current.time, ordinal, ...fields });
-  };
-
-  for (const line of lines) {
-    const h = HEADING_RE.exec(line);
-    // Only a heading-shaped line that follows a blank line opens a new entry.
-    if (h && prevBlank) {
-      flush();
-      current = { time: h[1] ?? "", lines: [] };
-    } else if (current) {
-      current.lines.push(line);
-    }
-    // Lines before the first heading (e.g. the `# date` title) are ignored.
-    prevBlank = line.trim() === "";
-  }
-  flush();
-
-  return entries;
+  // Block boundaries come from the SHARED helper so the heading rule lives in one
+  // place (entry-block-range.ts) — forget reuses the exact same ranges for byte-
+  // accurate deletes, so reading and editing can never disagree.
+  return entryRanges(lines).map((r) => {
+    const fields = extractLeadingFields(lines.slice(r.startLine, r.endLine + 1));
+    return { time: r.time, ordinal: r.ordinal, ...fields };
+  });
 }
 
 interface LeadingFields {
@@ -105,14 +85,14 @@ interface LeadingFields {
  */
 function extractLeadingFields(rawLines: string[]): LeadingFields {
   const lines = [...rawLines];
-  // Skip leading blank lines (the field zone starts at the first content line).
-  let i = 0;
-  while (i < lines.length && lines[i]!.trim() === "") i++;
-
   let mood: string | undefined;
   let intensity: number | undefined;
   const relations: Record<string, string[]> = {};
   let tags: string[] | undefined;
+
+  // Skip leading blank lines (the field zone starts at the first content line).
+  let i = 0;
+  while (i < lines.length && lines[i]!.trim() === "") i++;
 
   for (; i < lines.length; i++) {
     const raw = lines[i]!.trim();
@@ -157,6 +137,27 @@ function extractLeadingFields(rawLines: string[]): LeadingFields {
   if (Object.keys(relations).length > 0) out.relations = relations;
   if (tags && tags.length > 0) out.tags = tags;
   return out;
+}
+
+/**
+ * Count the lines at the top of an entry block (after the `## HH:MM` heading) that
+ * are the leading STRUCTURED fields — i.e. how many lines to KEEP when redacting so
+ * the heading + mood/relations/tags survive and only the verbatim body is blanked.
+ * Uses the SAME field-recognition rule as `extractLeadingFields` (DRY): a leading
+ * blank run, then the contiguous recognized-field lines, up to the first body line.
+ */
+export function extractLeadingFieldCount(blockBodyLines: string[]): number {
+  let i = 0;
+  while (i < blockBodyLines.length && blockBodyLines[i]!.trim() === "") i++;
+  for (; i < blockBodyLines.length; i++) {
+    const raw = blockBodyLines[i]!.trim();
+    if (raw === "") break;
+    if (raw.startsWith("mood::") && parseMoodValue(raw.slice("mood::".length).trim())) continue;
+    if (parseTagsLine(raw)) continue;
+    if (parseRelationLine(raw)) continue;
+    break; // first non-field line → body begins
+  }
+  return i;
 }
 
 /** Trim leading/trailing blank lines but keep internal formatting verbatim. */

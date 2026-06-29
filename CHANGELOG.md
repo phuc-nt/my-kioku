@@ -13,6 +13,17 @@ cosines overlap) and pulls a ~380 MB native dependency — so vector was deferre
 favor of the lever below, which beats it on the benchmark (R@3 0.96 vs 0.92) at zero
 dependency cost.
 
+### Added
+
+- **`forget` command (privacy / right-to-be-forgotten).** `forget <id>` deletes one
+  entry block; `forget --entity "X"` deletes every entry linking a person/place
+  (accent-tolerant match). `--redact` keeps the `## HH:MM` heading and the
+  mood/relations/tags but blanks only the verbatim body to a `[redacted DATE]`
+  tombstone; `--dry-run` previews. Deletion is a markdown edit + reindex (markdown is
+  the source of truth), and reuses the SHARED entry-block-range helper so a neighbor
+  entry — even one whose body contains a pasted heading-shaped line — is never
+  mis-cut. The response notes that later ids in the file are renumbered.
+
 ### Changed
 
 - **FTS recall is now OR-matched + coverage-gated.** Previously every query token had

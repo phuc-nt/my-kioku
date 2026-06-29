@@ -125,6 +125,28 @@ by its type — work the `suggested_actions` list top to bottom:
 
 Candidates are SUGGESTIONS — you decide. Every finding cites a real file/entry id.
 
+## Forget (privacy / right-to-be-forgotten)
+
+When the person asks to delete or hide something they shared:
+
+```bash
+my-kioku forget "2026-06-12#1"            # delete one entry by id
+my-kioku forget --entity "Hùng"           # delete every entry linking a person/place
+my-kioku forget "2026-06-12#1" --redact   # keep heading + mood, blank only the body
+my-kioku forget "2026-06-12#1" --dry-run  # preview what would be removed (no write)
+```
+
+- Prefer `--dry-run` first when deleting by `--entity` (it can match several entries)
+  — the summary lists every target before you commit.
+- `--redact` leaves a `[redacted DATE]` tombstone but keeps the `## HH:MM` heading and
+  the mood/relations/tags, so trends stay intact; use it when the person wants the
+  fact gone but the moment acknowledged.
+- After a delete, later entries in that day are **renumbered** — don't reuse an old
+  `date#ordinal`; re-`recall` if you need a fresh id (the response says so).
+- The vault is a git repo, so removed text stays in git history. That's an audit
+  trail, not a leak — for true hard erasure the person must rewrite git history
+  themselves (out of scope for this tool); `--redact` is the in-repo-safe option.
+
 ## Anti-patterns (learned the hard way)
 
 - ❌ Summarizing or paraphrasing before saving. Save the raw words.

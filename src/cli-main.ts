@@ -12,6 +12,7 @@ import { runRecall } from "./commands/recall.ts";
 import { runReflect } from "./commands/reflect.ts";
 import { runImport } from "./commands/import-kioku-lite.ts";
 import { runEntityMerge } from "./commands/entity-merge.ts";
+import { runForget } from "./commands/forget.ts";
 import { runWatch } from "./commands/watch.ts";
 
 const COMMANDS = [
@@ -22,6 +23,7 @@ const COMMANDS = [
   "reindex",
   "import",
   "entity",
+  "forget",
   "watch",
 ] as const;
 
@@ -35,6 +37,7 @@ const HELP = {
     reindex: "Rebuild the disposable SQLite index from the vault",
     import: "Import legacy memories (--from-kioku-lite <markdown-folder>)",
     entity: "Entity ops, e.g. `entity merge \"A\" --into \"B\"`",
+    forget: "Delete/redact an entry (`forget <id>` or `forget --entity X`); `--redact`, `--dry-run`",
     watch: "Poll the vault and keep the index in sync (foreground)",
   },
   global_flags: {
@@ -85,6 +88,8 @@ export function main(): void {
       "dry-run": { type: "boolean" },
       into: { type: "string" },
       interval: { type: "string" },
+      // forget
+      redact: { type: "boolean" },
       // init adapters
       skill: { type: "string" },
       hook: { type: "boolean" },
@@ -158,6 +163,14 @@ export function main(): void {
         dryRun: values["dry-run"] === true,
       });
     }
+    case "forget":
+      return runForget({
+        vaultFlag,
+        entryId: positionals[0],
+        entity: str(values.entity),
+        redact: values.redact === true,
+        dryRun: values["dry-run"] === true,
+      });
     case "watch": {
       const iv = str(values.interval);
       // watch is async and never returns; surface any startup rejection.
