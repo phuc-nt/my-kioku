@@ -188,6 +188,8 @@ export function ftsSearch(
   const countShort = nContent === 0;
   // Gate floor is FTS_MIN_COVER, capped by how many tokens can actually count, so a
   // single-content-word (or all-short) query falls back to cover≥1, never gated empty.
+  // Note: an all-short MULTI-token query (e.g. "ăn ở") still needs cover≥2 — exact
+  // parity with the pre-content-token behavior (which counted all tokens at min(2,len)).
   const coverPool = countShort ? queryTokens.length : nContent;
   const minCover = Math.max(1, Math.min(FTS_MIN_COVER, coverPool || 1));
   const out: FtsHit[] = [];
