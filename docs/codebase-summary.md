@@ -21,6 +21,7 @@ Generated from source audit of v1 implementation (150 passing tests, 8 phases co
 | `daily-note.ts` | ~150 | appendEntry(), getDailyNote(), setCheckinMeta() — mutate daily notes |
 | `entity-note.ts` | ~100 | ensureStub(), mergeEntities() — entity file ops |
 | `entry-parser.ts` | ~150 | parseEntries(), parseMoodValue(), extractLeadingFields() — split entries, extract mood/relations/tags |
+| `entry-block-range.ts` | ~60 | entryRanges() — deterministic block boundaries; shared by parseEntries + forget for byte-accurate deletion |
 | `inline-field-parser.ts` | ~60 | parseRelationLine(), parseTagsLine() — strict matchers for relation + tag lines |
 | `frontmatter.ts` | ~80 | parseFrontmatter(), renderFrontmatter() — YAML boundaries |
 | `wikilink-parser.ts` | ~60 | extractWikilinks() — find [[Name]] in text |
@@ -37,24 +38,28 @@ Generated from source audit of v1 implementation (150 passing tests, 8 phases co
 | `lazy-sync.ts` | ~60 | needsReindex(), reindexIfNeeded() — mtime-based incremental trigger |
 | `vault-walker.ts` | ~80 | walkVault(), vaultFileFor() — enumerate vault structure |
 
-**Schema version**: SCHEMA_VERSION = 6 (v0.3.0+); includes relations + tags tables;
-v4 standalone folded FTS (đ-fold), v5 NFC-in-fold, v6 NFC-canonical join keys. Bumped
-on schema shape OR stored-canonical-form change = full rebuild (lazy-sync is per-file).
+**Schema version**: SCHEMA_VERSION = 7 (v0.4.0+); adds `superseded(entry_id, newer_id)` table
+(marks entries replaced by newer ones). v4 standalone folded FTS (đ-fold), v5 NFC-in-fold,
+v6 NFC-canonical join keys. Bumped on schema shape OR stored-canonical-form change = full
+rebuild (lazy-sync is per-file). Both `dropAll` and `fullReindex` clear all tables from
+a single `DERIVED_TABLES` list (exported from db.ts) so no stale rows survive either path.
 
 ### src/search/ (Query layer)
 | File | LOC | Purpose |
 |------|-----|---------|
-| `fts-search.ts` | ~105 | ftsSearch() BM25 + sanitizeFtsQuery (prefix `*` on ≥4-char last token) + foldedPhrase/ftsPhraseMatch (contiguous-phrase boost) |
+| `fts-search.ts` | ~170 | ftsSearch() with OR-joined tokens + coverage gate (FTS_MIN_COVER=2); sanitizeFtsQuery joins folded tokens with OR (was AND); coverage gate drops single-token noise but allows short queries; foldedPhrase/ftsPhraseMatch for contiguous-phrase boost |
 | `entity-expansion.ts` | ~80 | expandQuery() — find entities linked in query results |
 | `relation-expansion.ts` | ~60 | expandByRelation(), entriesWithRelationType() — find entries by emotion relation target/type; RELATION_BONUS (0.5) |
-| `hydrate.ts` | ~65 | hydrate() — inflate scored entry id into full result (mood, relations, tags always present) |
+| `hydrate.ts` | ~70 | hydrate() — inflate scored entry id into full result (mood, relations, tags, superseded always present) |
 | `digest.ts` | ~60 | digestRecent() — summarize last N days for session hooks |
 
 **Token**: unicode61 remove_diacritics 2. The tokenizer strips combining marks but
 NOT `đ`, so `entries_fts` is a **standalone** FTS storing `fold(body)` (NFC + strip
 marks + đ→d) and the query is folded too — a diacritic-free "gia dinh" matches "gia
 đình", and a decomposed (NFD) form matches a composed one. Display always reads
-`entries.body` (untouched); FTS rowid == entries.rowid keeps them 1:1.
+`entries.body` (untouched); FTS rowid == entries.rowid keeps them 1:1. **OR matching**:
+FTS tokens are joined with OR (not AND) so enriched/natural queries recall more entries;
+coverage gate then drops incidental one-word overlaps while preserving true negatives.
 
 ### src/reflect/ (Deterministic analysis)
 | File | LOC | Purpose |
@@ -64,21 +69,24 @@ marks + đ→d) and the query is folded too — a diacritic-free "gia dinh" matc
 | `relation-checks.ts` | ~130 | findMissingRelations(), buildRelationSummary(), findUnconvertedTags() — relation backfill debt, top targets, unconverted tags |
 | `alias-similarity.ts` | ~70 | findAliasCandidates() — Levenshtein + diacritics |
 | `insight-candidates.ts` | ~100 | detectInsights() — spikes, patterns, frequency changes |
+| `concept-bridge.ts` | ~120 | detectConceptBridges() — finds tags appearing ≥3 times not yet a wikilink; suggests [[concept]] links to grow graph |
+| `superseded-facts.ts` | ~190 | detectSupersededCandidates() — pairs (older, newer) entries linking distinct entities of same supersedable type (employer/workplace/job/company); agent writes `superseded:: <newer-id>` to mark |
 | `render-markdown.ts` | ~80 | renderReflectMarkdown() — format report for Obsidian |
 
 **All traceable**: every finding has entry_id or file reference.
 
-### src/commands/ (8 command implementations)
+### src/commands/ (9 command implementations)
 | File | LOC | Purpose |
 |------|-----|---------|
 | `init.ts` | ~110 | Create vault structure + write vault-version.json; optionally copy SKILL.md, print hook setup |
 | `remember.ts` | ~180 | Append entry + auto-stub entities + index; one call, all operations; round-trip relations/tags |
-| `recall.ts` | ~200 | FTS search + entity expansion + relation expansion + time filters + digest mode; --relation <type> filter |
-| `reflect.ts` | ~110 | Scan vault → lint + stats + relation/tag detectors; 3 new detectors for living loop |
+| `recall.ts` | ~200 | FTS search + entity expansion + relation expansion + time filters + digest mode; --relation <type> filter; demotes superseded entries as tiebreak (never buries) |
+| `reflect.ts` | ~110 | Scan vault → lint + stats + relation/tag detectors + concept-bridge + superseded-candidates for living loop |
 | `reindex.ts` | ~40 | Drop index, rebuild from vault |
 | `import-kioku-lite.ts` | ~100 | Orchestrate markdown folder migration; uses extracted parser |
 | `import-kioku-lite-parser.ts` | ~80 | Pure parsers for kioku-lite format; handles # Kioku — heading, Python-list tags, partial event_time fallback |
 | `entity-merge.ts` | ~120 | Fold entity B into A; rewrite links + merge metadata |
+| `forget.ts` | ~220 | Delete/redact entry blocks by id or --entity; uses entry-block-range for byte-accurate boundaries; --dry-run safe preview |
 | `watch.ts` | ~60 | Poll vault mtime; trigger reindex if changed |
 
 **All return**: JSON {ok, data} or {ok: false, error, hint}.
@@ -174,6 +182,7 @@ my-kioku reflect [--since 30d] [--md]
 my-kioku reindex
 my-kioku import --from-kioku-lite <folder> [--dry-run]
 my-kioku entity merge <from> --into <to> [--dry-run]
+my-kioku forget [<entry-id> | --entity <name>] [--redact] [--dry-run]
 my-kioku watch [--interval 30]
 ```
 

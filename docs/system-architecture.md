@@ -10,7 +10,7 @@
 ┌─────────────────────────────────────────────────────────────┐
 │                        CLI (cli.ts)                         │
 │  Routes: init, remember, recall, reflect, reindex, import,  │
-│  entity, watch — all output stable JSON envelopes           │
+│  entity, forget, watch — all output stable JSON envelopes   │
 └──────────────┬──────────────────────────────────────────────┘
                │
 ┌──────────────▼──────────────────────────────────────────────┐
@@ -116,10 +116,11 @@ Details about this person...
 | `tags(entry_id, tag)` | Plain-text tags indexed for surfacing unconverted tags |
 | `entities(name, file, type, aliases)` | Entity catalog with type & alias JSON |
 | `daily_meta(file, date, sleep_hours, exercise, mood_score, extra)` | Parsed frontmatter |
+| `superseded(entry_id, newer_id)` | Latest-fact marker: entry_id is replaced by newer_id (via `superseded:: <date#ordinal>` field); recall demotes as tiebreak |
 
 **Keying safety**: entries keyed by file path (not date) — robust to duplicate-date files; re-indexing one never deletes another's entries.
 
-**SCHEMA_VERSION**: 3 (v0.2.0+) — includes relations + tags tables; drop-rebuild migration on schema bump.
+**SCHEMA_VERSION**: 7 (v0.4.0+) — adds `superseded` table; drop-rebuild migration on schema bump. Both dropAll and fullReindex clear from single `DERIVED_TABLES` list.
 
 ## Versioning (three independent axes)
 
@@ -145,19 +146,31 @@ the memory a diff-able / rollback-able history independent of the code repo.
 
 **Verbatim safety**: appendEntry writes the exact heading AFTER a blank line; prose heading-shaped lines never split entries.
 
-### Recall (FTS + Entity + Relation Expansion)
+### Recall (FTS + Entity + Relation Expansion + Superseded Demotion)
 1. Parse query; apply time filters (--since, --from, --to)
-2. FTS5 BM25 search on entries.body (unicode61, diacritics folded)
+2. FTS5 BM25 search on entries.body (unicode61, diacritics folded); OR-joined tokens + coverage gate (≥2 distinct tokens, except single-token queries)
 3. Extract entities from query; expand by wikilinks (query "Hùng" → entries linking [[Hùng]])
 4. If --relation <type> given: expand by relation (entries where Hùng is target of joy/trigger/... relation); bonus: RELATION_BONUS (0.5) above ENTITY_BONUS (0.3)
-5. Merge results; rank by score + recency
+5. Merge results; rank by score + recency; demote superseded entries as tiebreak (never pushes out of result set)
 6. Apply --limit; optionally --entity to narrow scope
-7. Hydrate results: each entry includes relations + tags (always present as {} / [] even if empty)
-8. Return {ok, results: [{ entry_id, date, time, score, mood, relations, tags, ... }, ...]}
+7. Hydrate results: each entry includes relations + tags + superseded_id (always present as {} / [] / null even if empty)
+8. Return {ok, results: [{ entry_id, date, time, score, mood, relations, tags, superseded, ... }, ...]}
 
 **Digest mode**: --digest summarizes last N days for session-start hooks.
 
-### Reflect (Deterministic Lint + Insights + Relation/Tag Analysis)
+### Forget (Delete/Redact Entry)
+1. Resolve target: `date#ordinal` (validate ordinal exists) OR `--entity <name>` (find all entries linking it)
+2. Group targets by file; sort ordinals descending (so deletion never shifts later block offsets)
+3. For each file: parse entry blocks via entryRanges(), slice lines to delete/redact each target
+   - **Delete**: remove heading through trailing blank line
+   - **Redact**: keep heading + leading structured fields; replace body with `[redacted YYYY-MM-DD]` tombstone
+4. Write modified file (if not --dry-run)
+5. Reindex touched files (if not --dry-run) via indexFile() so index stays consistent
+6. Return {ok, dry_run, mode, removed_count, files_touched, targets, note: "Later entries renumbered after delete"}
+
+**Byte-accuracy**: entryRanges() shared rule used by both parseEntries + forget so block boundaries never drift.
+
+### Reflect (Deterministic Lint + Insights + Relation/Tag/Graph Analysis)
 1. Scan vault; gather all entries, entities, wikilinks, mood/health/relations/tags data
 2. **Lint checks** (all findings traceable to entry_id/file):
    - Unknown-type entities (not classified)
@@ -173,10 +186,12 @@ the memory a diff-able / rollback-able history independent of the code repo.
    - **relation_summary**: top joy/trigger targets in the period (count-merged by folded name)
 6. **Tag converter**: tags not yet represented as entity notes; surfaced by frequency
 7. **Alias candidates**: similar entity names (Levenshtein similarity + diacritics)
-8. **Insight candidates**: mood spikes, health patterns, relationship frequency changes
-9. **Suggested actions**: actionable lint + relation backfill + tag conversion candidates
-10. Write markdown report → `.kioku/reflect/{timestamp}.md` (if --md)
-11. Return {ok, report, lint, alias_candidates, mood_stats, missing_emotional_relation, relation_summary, tags_to_convert, ...}
+8. **Concept bridges**: tags appearing ≥3 times within range not yet linked as [[wikilink]]; suggests adding to grow graph
+9. **Superseded candidates**: pairs (older, newer) both linking distinct same-type entities (employer/workplace/job/company), sharing context, gap ≥7 days; agent writes `superseded:: <newer-id>`
+10. **Insight candidates**: mood spikes, health patterns, relationship frequency changes
+11. **Suggested actions**: actionable lint + relation backfill + tag conversion + concept-bridge + superseded candidates
+12. Write markdown report → `.kioku/reflect/{timestamp}.md` (if --md)
+13. Return {ok, report, lint, alias_candidates, mood_stats, missing_emotional_relation, relation_summary, tags_to_convert, concept_bridges, superseded_candidates, ...}
 
 **No LLM**: all deterministic; agent reads suggested_actions and backfills via cron.
 
