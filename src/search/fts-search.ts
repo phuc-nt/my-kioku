@@ -21,6 +21,17 @@ export interface FtsHit {
 const MIN_PREFIX_LEN = 4;
 
 /**
+ * Minimum number of DISTINCT query tokens an entry must match to survive the
+ * coverage gate. With OR matching (below), an entry sharing a single incidental
+ * common token (e.g. "mua", "đầu tư") would otherwise leak in; requiring ≥2
+ * distinct matched tokens drops that noise while real multi-term queries keep
+ * 2–3 on the right entry. A query with fewer usable tokens than this falls back
+ * to cover≥1 so a legitimately short query is never gated to empty. Spike Q4:
+ * cover≥2 removes absent-topic-phrase leakage at no cost to real recall.
+ */
+const FTS_MIN_COVER = 2;
+
+/**
  * Split raw text into folded, FTS-safe tokens. Keep Unicode letters/numbers;
  * everything else is a separator — this strips every FTS operator while preserving
  * Vietnamese words. Each token is FOLDED (đ→d + strip marks) to match the folded
@@ -43,9 +54,13 @@ function quote(t: string): string {
 
 /**
  * Turn arbitrary text into a safe FTS5 MATCH string: folded tokens, each quoted,
- * implicit AND. The LAST token gets a prefix `*` (search-as-you-type: a partial
- * final word like "deadl" still matches "deadline"); earlier tokens stay exact to
- * avoid noisy prefix floods. Returns "" when no usable token remains (caller skips).
+ * joined with OR. OR (not implicit AND) is the key recall lever: an enriched query
+ * ADDS terms, and under AND every added term is another REQUIRED match (so a longer
+ * query recalls LESS); under OR more terms = more chances to match (more recall),
+ * and bm25 already ranks higher-coverage entries above lower ones. The coverage
+ * gate in ftsSearch then removes single-incidental-token noise. The LAST token gets
+ * a prefix `*` (search-as-you-type: "deadl" still matches "deadline"). Returns ""
+ * when no usable token remains (caller skips).
  */
 export function sanitizeFtsQuery(raw: string): string {
   const tokens = foldedTokens(raw);
@@ -55,7 +70,28 @@ export function sanitizeFtsQuery(raw: string): string {
     .map((t, i) =>
       i === last && t.length >= MIN_PREFIX_LEN ? `${quote(t)}*` : quote(t),
     )
-    .join(" ");
+    .join(" OR ");
+}
+
+/**
+ * Count how many DISTINCT query tokens appear in an entry's body (folded match).
+ * Used by the coverage gate: with OR matching, an entry need only share one token
+ * to be returned, so we re-check overlap to demand a minimum. Mirrors the MATCH
+ * semantics — the LAST token is a PREFIX match when ≥ MIN_PREFIX_LEN (just as
+ * sanitizeFtsQuery adds `*`), so "deadl" counts against a body containing "deadline".
+ * Folds the body once; called on the ≤limit hits FTS already returned, so cost is trivial.
+ */
+function coverage(queryTokens: string[], body: string): number {
+  const bodyTokens = foldedTokens(body);
+  const bodySet = new Set(bodyTokens);
+  const lastIdx = queryTokens.length - 1;
+  let n = 0;
+  for (let i = 0; i < queryTokens.length; i++) {
+    const t = queryTokens[i]!;
+    const isPrefix = i === lastIdx && t.length >= MIN_PREFIX_LEN;
+    if (isPrefix ? bodyTokens.some((b) => b.startsWith(t)) : bodySet.has(t)) n++;
+  }
+  return n;
 }
 
 /**
@@ -89,7 +125,14 @@ export function ftsPhraseMatch(db: Database, rawQuery: string, limit = 50): stri
     .map((r) => r.id);
 }
 
-/** Run a sanitized FTS query; returns up to `limit` hits ordered by bm25. */
+/**
+ * Run a sanitized FTS query; returns up to `limit` hits ordered by bm25 (best first),
+ * after a COVERAGE GATE. OR matching admits any entry sharing one query token, so we
+ * keep only entries matching ≥ FTS_MIN_COVER distinct query tokens — except when the
+ * query itself has fewer usable tokens than that (then cover≥1, so a short/single-word
+ * query is never gated to empty). FTS still owns the true-negative guarantee: a query
+ * whose tokens appear nowhere returns no rows at all (S4).
+ */
 export function ftsSearch(
   db: Database,
   rawQuery: string,
@@ -97,14 +140,30 @@ export function ftsSearch(
 ): FtsHit[] {
   const match = sanitizeFtsQuery(rawQuery);
   if (!match) return [];
-  return db
-    .query<FtsHit, [string, number]>(
-      `SELECT e.id AS id, e.date AS date, e.time AS time, bm25(entries_fts) AS bm25
+  // Fetch enough rows to gate without starving the result: OR can match many weak
+  // (cover=1) entries, so over-fetch then filter down to `limit` survivors. 4× is
+  // ample headroom — bm25 sorts higher-coverage entries ABOVE single-token noise
+  // (a 2-distinct-term match sums two contributions and IDF suppresses common
+  // tokens), so real cover≥2 hits never fall past the cut at journal scale.
+  const rows = db
+    .query<FtsHit & { body: string }, [string, number]>(
+      `SELECT e.id AS id, e.date AS date, e.time AS time, e.body AS body,
+              bm25(entries_fts) AS bm25
        FROM entries_fts
        JOIN entries e ON e.rowid = entries_fts.rowid
        WHERE entries_fts MATCH ?
        ORDER BY bm25(entries_fts)
        LIMIT ?`,
     )
-    .all(match, limit);
+    .all(match, limit * 4);
+
+  const queryTokens = foldedTokens(rawQuery);
+  const minCover = Math.min(FTS_MIN_COVER, queryTokens.length || 1);
+  const out: FtsHit[] = [];
+  for (const r of rows) {
+    if (coverage(queryTokens, r.body) < minCover) continue;
+    out.push({ id: r.id, date: r.date, time: r.time, bm25: r.bm25 });
+    if (out.length >= limit) break;
+  }
+  return out;
 }

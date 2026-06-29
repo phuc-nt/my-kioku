@@ -73,6 +73,15 @@ my-kioku recall --digest --since 7d      # compact summary for a session-start h
 Flags: `--entity`, `--relation joy|trigger|with|eases|<verb>`, `--since 7d|YYYY-MM-DD`,
 `--from`/`--to`, `--limit`, `--digest`.
 
+**Matching is OR + coverage-gated.** A query matches an entry that shares ANY of its
+(diacritic-folded) terms, ranked by how many terms it covers — so a richer query
+recalls *more*, not less. An entry must share ≥2 distinct query terms to surface
+(single-term queries excepted), which drops incidental one-word overlaps. It favors
+**recall over precision** (the right entry is in the top-k you read), so the agent
+should **enrich the query** before calling recall: replace pronouns with known
+`[[Name]]`s and add entities/synonyms (keep the user's language — add terms, don't
+translate). A term that appears nowhere returns an empty result (no fabricated hits).
+
 `data` (search): `{ query, entity, relation, count, results: [...], entity_context: [...] }`.
 - `results[]`: `{ id, date, time, ordinal, mood, intensity, body, links[], relations{},
   tags[], score }`. `body` is the VERBATIM entry text. `score` is a relevance number

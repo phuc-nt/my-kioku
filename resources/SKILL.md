@@ -74,6 +74,26 @@ my-kioku recall --digest                    # compact summary (for session start
 Combine query + `--relation` + `--since`/`--from`/`--to` freely. Results are JSON
 with the verbatim body, mood, links, relations, tags, and entity context.
 
+### Enrich the query first (recall is keyword-driven)
+
+Recall matches on the WORDS in your query — it has no built-in synonyms. Before you
+call `recall`, rewrite the user's question into search terms:
+
+- Replace pronouns / vague references with the real `[[Name]]` you know from context
+  (the conversation, prior `entity_context`).
+- ADD known entity names + a synonym or paraphrase of the user's wording. Mix
+  Vietnamese + English freely; **keep the user's language — add terms, never translate
+  away the original.**
+
+Recall now matches ANY of the query terms (not all), so MORE relevant terms = better
+recall. Examples:
+
+- User: *"lúc nào tôi kiệt sức?"* → recall `"kiệt sức mệt mỏi burnout [[công việc]] deadline"`
+- User: *"chuyện với sếp dạo này"* → recall `"[[Hùng]] sếp họp promotion lương"`
+
+An entry must share at least two of your terms to surface (a single shared word is
+treated as noise), so give a few specific terms, not one vague one.
+
 ## Reflect (the living loop — run on a schedule)
 
 ```bash
@@ -117,3 +137,5 @@ Candidates are SUGGESTIONS — you decide. Every finding cites a real file/entry
   only write one when the cause is clear; otherwise let `reflect` remind you.
 - ❌ Translating mixed-language entries to one language, or renaming an English
   proper noun to Vietnamese (or vice-versa). Mirror what the person wrote.
+- ❌ Recalling a raw natural-language question verbatim. Enrich it first —
+  pronoun→`[[Name]]`, add known entities + synonyms (see "Enrich the query first").

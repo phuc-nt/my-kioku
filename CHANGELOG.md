@@ -4,6 +4,28 @@ All notable changes to this project are documented here. Format based on
 [Keep a Changelog](https://keepachangelog.com/); versions follow
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+Semantic-recall lift, no new dependency. A Phase-0 spike (real install of a local
+embedding model + the benchmark VI corpus) showed a vector layer could not preserve
+the true-negative guarantee under any cosine threshold (real-match and absent-topic
+cosines overlap) and pulls a ~380 MB native dependency — so vector was deferred in
+favor of the lever below, which beats it on the benchmark (R@3 0.96 vs 0.92) at zero
+dependency cost.
+
+### Changed
+
+- **FTS recall is now OR-matched + coverage-gated.** Previously every query token had
+  to be present (implicit AND), so a longer/enriched query recalled *less*. Now an
+  entry matching ANY query term surfaces, ranked by term coverage (bm25), with a
+  ≥2-distinct-term gate to drop incidental single-word overlaps (single-term queries
+  excepted). Big recall lift for natural-language/enriched queries; the true-negative
+  guarantee is unchanged (a term that appears nowhere returns empty — no fabricated
+  hits). Trades some precision for recall, which suits an agent that reads the top-k.
+- **SKILL.md teaches query enrichment.** The shipped agent protocol now tells the agent
+  to enrich a query before recall (pronoun→`[[Name]]`, add known entities + synonyms,
+  keep the user's language) — pairs with OR matching for the recall lift.
+
 ## [0.3.1] - 2026-06-28
 
 Publish & integration readiness. No runtime behavior change for existing users.
