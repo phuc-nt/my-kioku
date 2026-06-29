@@ -11,6 +11,7 @@ import { parseEntries } from "../vault/entry-parser.ts";
 import { extractWikilinks } from "../vault/wikilink-parser.ts";
 import { fold } from "../lib/diacritics.ts";
 import { walkVault, type VaultFile, type FileKind } from "./vault-walker.ts";
+import { DERIVED_TABLES } from "./db.ts";
 
 const KNOWN_META = new Set(["sleep_hours", "exercise", "mood_score"]);
 
@@ -39,9 +40,10 @@ export function removeFile(db: Database, rel: string): void {
     const byFile =
       "entry_id IN (SELECT id FROM entries WHERE file = ?)";
     db.prepare(`DELETE FROM links WHERE ${byFile}`).run(rel);
-    // Delete relations/tags BEFORE entries so the entry-id subquery still resolves.
+    // Delete relations/tags/superseded BEFORE entries so the entry-id subquery still resolves.
     db.prepare(`DELETE FROM relations WHERE ${byFile}`).run(rel);
     db.prepare(`DELETE FROM tags WHERE ${byFile}`).run(rel);
+    db.prepare(`DELETE FROM superseded WHERE ${byFile}`).run(rel);
     db.prepare("DELETE FROM entries WHERE file = ?").run(rel);
     db.prepare("DELETE FROM daily_meta WHERE file = ?").run(rel);
   } else if (kind === "entity") {
@@ -97,6 +99,9 @@ function indexJournal(
     "INSERT INTO relations(entry_id, rel_type, target) VALUES (?, ?, ?)",
   );
   const insTag = db.prepare("INSERT INTO tags(entry_id, tag) VALUES (?, ?)");
+  const insSuperseded = db.prepare(
+    "INSERT OR REPLACE INTO superseded(entry_id, newer_id) VALUES (?, ?)",
+  );
 
   for (const e of parseEntries(body)) {
     const id = `${date}#${e.ordinal}`;
@@ -118,6 +123,8 @@ function indexJournal(
       for (const target of targets) insRel.run(id, verb, target);
     }
     for (const tag of e.tags ?? []) insTag.run(id, tag);
+    // Latest-fact flag: this entry is marked superseded by a newer one.
+    if (e.superseded) insSuperseded.run(id, e.superseded);
   }
 
   // Daily check-in frontmatter → daily_meta (unknown keys collected into extra).
@@ -178,9 +185,10 @@ export function fullReindex(db: Database, vault: string): ReindexStats {
   const skipped: { file: string; error: string }[] = [];
 
   db.transaction(() => {
-    db.exec(
-      "DELETE FROM entries_fts; DELETE FROM entries; DELETE FROM links; DELETE FROM relations; DELETE FROM tags; DELETE FROM entities; DELETE FROM daily_meta; DELETE FROM files;",
-    );
+    // Clear every derived table from the SINGLE shared list so a new table can't be
+    // dropped on a version bump but forgotten here (H5: stale rows after a normal
+    // reindex). dropAll (version-mismatch path) uses the same list.
+    db.exec(DERIVED_TABLES.map((t) => `DELETE FROM ${t};`).join(" "));
     for (const vf of files) {
       try {
         indexFile(db, vf);

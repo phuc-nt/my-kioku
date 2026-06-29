@@ -124,6 +124,12 @@ by its type — work the `suggested_actions` list top to bottom:
   entries but not yet linked), add the suggested `[[concept]]` to the cited entries
   when the theme is real. Keep the user's wording — only APPEND the link; this connects
   the theme so a later recall finds all of them.
+- **mark superseded** — for `superseded_candidates` (an older fact that looks replaced
+  by a newer one, e.g. a job change), IF it is truly replaced, add a
+  `superseded:: <newer-entry-id>` line to the OLD entry's top fields (alongside
+  `mood::`). Don't edit the body. recall then prefers the newer fact for "current/now"
+  questions while the old one is still findable for "what was my previous…" questions.
+  If it's NOT a real replacement (both still true), skip it.
 - **write insight notes** — for an insight candidate you judge real, write a
   short note into `insights/` (a normal file write) citing the evidence entry ids.
 

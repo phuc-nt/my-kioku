@@ -12,8 +12,29 @@ import { VAULT_INDEX_DIR } from "../config.ts";
  * triggers a full rebuild on next open (the only automatic, vault-wide reindex;
  * lazy-sync is per-file/mtime and would otherwise leave a mixed index).
  * v6: graph-join keys (entity names, link/relation targets) are now stored NFC.
+ * v7: adds the `superseded` table (latest-fact flag derived from a `superseded::`
+ *     leading field). Disposable — a bump just drop-rebuilds from markdown.
  */
-export const SCHEMA_VERSION = 6;
+export const SCHEMA_VERSION = 7;
+
+/**
+ * Every derived table, in a single list. BOTH the version-mismatch `dropAll` and
+ * the normal-reindex `fullReindex` DELETE pass derive from this — so a new table
+ * can never be cleared by one path but forgotten by the other (the H5 class of
+ * "stale rows survive a normal reindex" bug). Order: FTS first (mirror), then
+ * children before parents is not required (DELETE, not DROP, has no FK order here).
+ */
+export const DERIVED_TABLES = [
+  "entries_fts",
+  "entries",
+  "links",
+  "relations",
+  "tags",
+  "entities",
+  "daily_meta",
+  "superseded",
+  "files",
+] as const;
 
 export function indexDbPath(vault: string): string {
   return join(vault, VAULT_INDEX_DIR, "index.db");
@@ -86,6 +107,15 @@ CREATE TABLE IF NOT EXISTS tags(
 CREATE INDEX IF NOT EXISTS idx_tags_tag ON tags(tag);
 CREATE INDEX IF NOT EXISTS idx_tags_entry ON tags(entry_id);
 
+-- Latest-fact flag: an entry the user/agent marked as replaced by a newer one,
+-- via a superseded:: date#ordinal leading field. Derived (rebuildable from
+-- markdown); recall demotes a superseded entry so current/now queries prefer the
+-- newer fact. Keyed by the OLD entry id.
+CREATE TABLE IF NOT EXISTS superseded(
+  entry_id TEXT PRIMARY KEY,      -- the OLD (superseded) entry
+  newer_id TEXT                   -- the entry that replaces it ("date#ordinal")
+);
+
 CREATE INDEX IF NOT EXISTS idx_entries_date ON entries(date);
 `;
 
@@ -134,16 +164,7 @@ export function closeDb(db: Database): void {
 
 /** Drop all known tables (index is disposable; this is the migration strategy). */
 function dropAll(db: Database): void {
-  for (const t of [
-    "entries_fts",
-    "entries",
-    "links",
-    "relations",
-    "tags",
-    "entities",
-    "daily_meta",
-    "files",
-  ]) {
+  for (const t of DERIVED_TABLES) {
     db.exec(`DROP TABLE IF EXISTS ${t};`);
   }
 }

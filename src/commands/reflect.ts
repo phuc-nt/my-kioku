@@ -18,6 +18,7 @@ import {
   findUnconvertedTags,
 } from "../reflect/relation-checks.ts";
 import { detectConceptBridges } from "../reflect/concept-bridge.ts";
+import { detectSupersededCandidates } from "../reflect/superseded-facts.ts";
 import { renderReflectMarkdown } from "../reflect/render-markdown.ts";
 
 export interface ReflectArgs {
@@ -79,6 +80,7 @@ function assembleReport(db: ReturnType<typeof openDb>, range: DateRange) {
   const relationSummary = buildRelationSummary(db, range);
   const tagsToConvert = findUnconvertedTags(db);
   const conceptBridges = detectConceptBridges(db, range);
+  const supersededCandidates = detectSupersededCandidates(db, range);
 
   return {
     period: range,
@@ -91,6 +93,7 @@ function assembleReport(db: ReturnType<typeof openDb>, range: DateRange) {
     relation_summary: relationSummary,
     tags_to_convert: tagsToConvert,
     concept_bridges: conceptBridges,
+    superseded_candidates: supersededCandidates,
     suggested_actions: deriveActions(
       lint,
       aliasCandidates,
@@ -98,6 +101,7 @@ function assembleReport(db: ReturnType<typeof openDb>, range: DateRange) {
       missingRelations,
       tagsToConvert,
       conceptBridges,
+      supersededCandidates,
     ),
   };
 }
@@ -110,6 +114,7 @@ function deriveActions(
   missingRelations: ReturnType<typeof findMissingRelations>,
   tagsToConvert: ReturnType<typeof findUnconvertedTags>,
   conceptBridges: ReturnType<typeof detectConceptBridges>,
+  supersededCandidates: ReturnType<typeof detectSupersededCandidates>,
 ): string[] {
   const actions: string[] = [];
   if (lint.unknown_type_entities.length)
@@ -126,6 +131,10 @@ function deriveActions(
     actions.push(`convert ${tagsToConvert.length} tags to wikilinks/relations`);
   for (const b of conceptBridges)
     actions.push(`add [[${b.concept}]] to ${b.entry_count} entries`);
+  for (const c of supersededCandidates)
+    actions.push(
+      `mark ${c.older_id} superseded by ${c.newer_id}? (${c.old_entity} → ${c.new_entity})`,
+    );
   for (const ins of insights) actions.push(`consider insight: ${ins.kind}`);
   return actions;
 }

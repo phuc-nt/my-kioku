@@ -16,6 +16,10 @@ export interface HydratedEntry {
   links: string[];
   relations: Record<string, string[]>;
   tags: string[];
+  // The newer entry id that supersedes this one ("date#ordinal"), or null. Set when
+  // the entry carries a `superseded::` field — recall demotes such entries so a
+  // "current/now" query prefers the replacement.
+  superseded: string | null;
   score: number;
 }
 
@@ -47,7 +51,21 @@ export function hydrate(db: Database, id: string, score: number): HydratedEntry 
     .all(id)
     .map((r) => r.tag);
 
-  return { ...row, links, relations, tags, score: Math.round(score * 1000) / 1000 };
+  const superseded =
+    db
+      .query<{ newer_id: string }, [string]>(
+        "SELECT newer_id FROM superseded WHERE entry_id = ?",
+      )
+      .get(id)?.newer_id ?? null;
+
+  return {
+    ...row,
+    links,
+    relations,
+    tags,
+    superseded,
+    score: Math.round(score * 1000) / 1000,
+  };
 }
 
 /** Inclusive date-window check (null range = no filter). */

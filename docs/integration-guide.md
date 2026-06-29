@@ -84,8 +84,10 @@ translate). A term that appears nowhere returns an empty result (no fabricated h
 
 `data` (search): `{ query, entity, relation, count, results: [...], entity_context: [...] }`.
 - `results[]`: `{ id, date, time, ordinal, mood, intensity, body, links[], relations{},
-  tags[], score }`. `body` is the VERBATIM entry text. `score` is a relevance number
-  (higher = better; NOT stable across queries — for ordering only).
+  tags[], superseded, score }`. `body` is the VERBATIM entry text. `score` is a relevance
+  number (higher = better; NOT stable across queries — for ordering only). `superseded`
+  is the newer entry id that replaces this one (or `null`); a superseded entry is demoted
+  among equal-relevance peers but never dropped, so a past-fact query still finds it.
 - `entity_context[]`: entities the query/`--entity` matched —
   `{ name, type, aliases[], total_mentions_all_time }`. Useful to show "who/what this is
   about". Empty when nothing matched.
@@ -101,7 +103,14 @@ my-kioku reflect --since 30d
 
 100% deterministic, read-only. `data` keys: `period, lint, alias_candidates,
 mood_stats, health_stats, insight_candidates, missing_emotional_relation,
-relation_summary, tags_to_convert, concept_bridges, suggested_actions`.
+relation_summary, tags_to_convert, concept_bridges, superseded_candidates,
+suggested_actions`.
+
+`superseded_candidates[]`: `{ older_id, newer_id, type, old_entity, new_entity,
+shared_context }` — an older fact that LOOKS replaced by a newer one (two distinct
+same-type entities, e.g. employers, sharing a common anchor). A SUGGESTION only: the
+agent confirms it's a real replacement and writes `superseded:: <newer_id>` to the OLD
+entry's leading fields. The CLI never auto-marks.
 
 `concept_bridges[]`: `{ concept, reason, entry_count, evidence[] }` — a recurring tag
 spanning ≥3 entries that isn't yet a `[[wikilink]]`. The agent appends the suggested

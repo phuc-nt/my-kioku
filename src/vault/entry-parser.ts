@@ -21,6 +21,9 @@ export interface ParsedEntry {
   relations?: Record<string, string[]>;
   // Plain string tags (NOT wikilinks). Omitted when absent.
   tags?: string[];
+  // Latest-fact flag: the id ("date#ordinal") of a newer entry that replaces this
+  // one, from a strict `superseded:: <date#ordinal>` leading field. Omitted when absent.
+  superseded?: string;
   text: string; // entry body VERBATIM, leading field lines removed
 }
 
@@ -28,6 +31,9 @@ export interface ParsedEntry {
 // (letters/diacritics/digits/_/-) optionally followed by /intensity. This keeps
 // free prose that merely starts with "mood::" from being swallowed as a field.
 const MOOD_LINE_RE = /^mood::\s*([\p{L}\p{N}_-]+)(?:\/([0-9]+))?\s*$/u;
+// A superseded field is only recognized in a STRICT `date#ordinal` shape, so a
+// user-typed `superseded:: whatever` stays verbatim in the body (never silently eaten).
+const SUPERSEDED_LINE_RE = /^superseded::\s*(\d{4}-\d{2}-\d{2}#\d+)\s*$/;
 
 export const MIN_INTENSITY = 1;
 export const MAX_INTENSITY = 5;
@@ -74,6 +80,7 @@ interface LeadingFields {
   intensity?: number;
   relations?: Record<string, string[]>;
   tags?: string[];
+  superseded?: string;
   text: string;
 }
 
@@ -89,6 +96,7 @@ function extractLeadingFields(rawLines: string[]): LeadingFields {
   let intensity: number | undefined;
   const relations: Record<string, string[]> = {};
   let tags: string[] | undefined;
+  let superseded: string | undefined;
 
   // Skip leading blank lines (the field zone starts at the first content line).
   let i = 0;
@@ -107,6 +115,16 @@ function extractLeadingFields(rawLines: string[]): LeadingFields {
         continue;
       }
       break; // mood:: prefix but not a strict field → verbatim
+    }
+
+    // superseded:: <date#ordinal> (only once; strict shape or it falls to body)
+    if (superseded === undefined && raw.startsWith("superseded::")) {
+      const s = SUPERSEDED_LINE_RE.exec(raw);
+      if (s) {
+        superseded = s[1]!;
+        continue;
+      }
+      break; // superseded:: prefix but not a strict id → verbatim
     }
 
     // tags:: (de-dup + order-preserve, consistent with relations below)
@@ -136,6 +154,7 @@ function extractLeadingFields(rawLines: string[]): LeadingFields {
   if (intensity !== undefined) out.intensity = intensity;
   if (Object.keys(relations).length > 0) out.relations = relations;
   if (tags && tags.length > 0) out.tags = tags;
+  if (superseded !== undefined) out.superseded = superseded;
   return out;
 }
 
@@ -153,6 +172,7 @@ export function extractLeadingFieldCount(blockBodyLines: string[]): number {
     const raw = blockBodyLines[i]!.trim();
     if (raw === "") break;
     if (raw.startsWith("mood::") && parseMoodValue(raw.slice("mood::".length).trim())) continue;
+    if (SUPERSEDED_LINE_RE.test(raw)) continue;
     if (parseTagsLine(raw)) continue;
     if (parseRelationLine(raw)) continue;
     break; // first non-field line → body begins

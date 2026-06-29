@@ -22,6 +22,13 @@ interface ReflectLike {
   };
   tags_to_convert: { tag: string; count: number }[];
   concept_bridges: { concept: string; reason: string; entry_count: number; evidence: string[] }[];
+  superseded_candidates: {
+    older_id: string;
+    newer_id: string;
+    type: string;
+    old_entity: string;
+    new_entity: string;
+  }[];
   suggested_actions: string[];
 }
 
@@ -97,6 +104,16 @@ export function renderReflectMarkdown(r: ReflectLike): string {
     for (const b of r.concept_bridges) {
       lines.push(
         `- [ ] add \`[[${b.concept}]]\` to ${b.entry_count} entries (${b.evidence.join(", ")})`,
+      );
+    }
+    lines.push("");
+  }
+
+  if (r.superseded_candidates.length) {
+    lines.push("## Superseded-fact candidates");
+    for (const c of r.superseded_candidates) {
+      lines.push(
+        `- [ ] mark \`${c.older_id}\` superseded by \`${c.newer_id}\`? (${c.type}: ${c.old_entity} → ${c.new_entity})`,
       );
     }
     lines.push("");

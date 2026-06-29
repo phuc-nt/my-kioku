@@ -15,6 +15,17 @@ dependency cost.
 
 ### Added
 
+- **Superseded-fact / latest-fact.** A `superseded:: <date#ordinal>` leading field marks
+  an entry as replaced by a newer one (strict shape — a free-text `superseded:: …` stays
+  verbatim in the body). `recall` demotes a superseded entry **as a tiebreak** so a
+  "current/now" query prefers the newer fact, while the old fact is never buried (a
+  "what was my previous…" query still finds it); each result exposes a `superseded` field.
+  `reflect` surfaces `superseded_candidates` (distinct same-type entities — e.g. employers
+  — sharing a context, ≥7 days apart, never co-occurring) for the agent to confirm and
+  mark. Index schema bumps **6 → 7** (new `superseded` table; a disposable drop-rebuild,
+  so existing vaults auto-migrate with zero data risk). Both reindex paths (version-bump
+  and normal) now clear derived tables from one shared list, so no table can leave stale
+  rows.
 - **`reflect` suggests concept bridges.** A new `concept_bridges` finding surfaces a
   recurring tag that spans ≥3 entries but isn't yet a `[[wikilink]]`, with a
   `add [[concept]] to N entries` action and cited evidence ids. The agent appends the

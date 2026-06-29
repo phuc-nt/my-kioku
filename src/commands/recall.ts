@@ -163,8 +163,17 @@ function runSearch(db: Database, args: RecallArgs, range: DateRange | null) {
     .filter((e): e is HydratedEntry => e !== null)
     .filter((e) => inRange(e.date, range));
 
-  // Sort by score desc, then recency.
-  hydrated.sort((a, b) => b.score - a.score || cmpRecency(a, b));
+  // Sort by score desc; among CLOSE scores, demote a superseded ("no longer current")
+  // entry below its non-superseded peer; then recency. The demotion is a TIEBREAK, not
+  // a score subtraction — so it never pushes a superseded entry out of the result set
+  // (a "what was my OLD job" query still finds it), it only orders the newer fact first
+  // when relevance is otherwise comparable (M2).
+  hydrated.sort(
+    (a, b) =>
+      b.score - a.score ||
+      supersededRank(a) - supersededRank(b) ||
+      cmpRecency(a, b),
+  );
 
   return {
     query: args.query ?? null,
@@ -174,6 +183,11 @@ function runSearch(db: Database, args: RecallArgs, range: DateRange | null) {
     results: hydrated.slice(0, limit),
     entity_context: expansion.entities.map(entityCtx),
   };
+}
+
+/** A superseded entry ranks AFTER a non-superseded one in a tiebreak (0 before 1). */
+function supersededRank(e: HydratedEntry): number {
+  return e.superseded ? 1 : 0;
 }
 
 function entityCtx(e: EntityMatch) {
