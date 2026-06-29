@@ -15,6 +15,12 @@ dependency cost.
 
 ### Added
 
+- **`reflect` suggests concept bridges.** A new `concept_bridges` finding surfaces a
+  recurring tag that spans ≥3 entries but isn't yet a `[[wikilink]]`, with a
+  `add [[concept]] to N entries` action and cited evidence ids. The agent appends the
+  link (the CLI never edits markdown) to connect the theme — a cheap, vector-free
+  semantic-recall boost (it's the `[[thể dục]]` lift from the benchmark). Folded-variant
+  tags merge into one bridge; tags already an entity are skipped.
 - **`forget` command (privacy / right-to-be-forgotten).** `forget <id>` deletes one
   entry block; `forget --entity "X"` deletes every entry linking a person/place
   (accent-tolerant match). `--redact` keeps the `## HH:MM` heading and the

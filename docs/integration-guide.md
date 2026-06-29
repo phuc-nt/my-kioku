@@ -101,12 +101,18 @@ my-kioku reflect --since 30d
 
 100% deterministic, read-only. `data` keys: `period, lint, alias_candidates,
 mood_stats, health_stats, insight_candidates, missing_emotional_relation,
-relation_summary, tags_to_convert, suggested_actions`.
+relation_summary, tags_to_convert, concept_bridges, suggested_actions`.
+
+`concept_bridges[]`: `{ concept, reason, entry_count, evidence[] }` — a recurring tag
+spanning ≥3 entries that isn't yet a `[[wikilink]]`. The agent appends the suggested
+`[[concept]]` to the cited entries to connect the theme for recall (a cheap, vector-free
+semantic boost). Suggestion only — the CLI never edits markdown.
 
 `suggested_actions` is a prioritized list of plain-text actions (e.g. `"classify 1
-unknown-type entities"`). The agent works the list top to bottom: classify entity
-types, backfill `[[links]]`, merge aliases, add emotional relations, write insight
-notes. Each underlying finding cites a real entry/file id, so actions are traceable.
+unknown-type entities"`, `"add [[thể dục]] to 3 entries"`). The agent works the list top
+to bottom: classify entity types, backfill `[[links]]`, merge aliases, add emotional
+relations, add concept links, write insight notes. Each underlying finding cites a real
+entry/file id, so actions are traceable.
 
 ## Drop-in agent instructions
 

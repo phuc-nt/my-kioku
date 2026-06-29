@@ -17,6 +17,7 @@ import {
   buildRelationSummary,
   findUnconvertedTags,
 } from "../reflect/relation-checks.ts";
+import { detectConceptBridges } from "../reflect/concept-bridge.ts";
 import { renderReflectMarkdown } from "../reflect/render-markdown.ts";
 
 export interface ReflectArgs {
@@ -77,6 +78,7 @@ function assembleReport(db: ReturnType<typeof openDb>, range: DateRange) {
   const missingRelations = findMissingRelations(db);
   const relationSummary = buildRelationSummary(db, range);
   const tagsToConvert = findUnconvertedTags(db);
+  const conceptBridges = detectConceptBridges(db, range);
 
   return {
     period: range,
@@ -88,12 +90,14 @@ function assembleReport(db: ReturnType<typeof openDb>, range: DateRange) {
     missing_emotional_relation: missingRelations,
     relation_summary: relationSummary,
     tags_to_convert: tagsToConvert,
+    concept_bridges: conceptBridges,
     suggested_actions: deriveActions(
       lint,
       aliasCandidates,
       insightCandidates,
       missingRelations,
       tagsToConvert,
+      conceptBridges,
     ),
   };
 }
@@ -105,6 +109,7 @@ function deriveActions(
   insights: ReturnType<typeof detectInsights>,
   missingRelations: ReturnType<typeof findMissingRelations>,
   tagsToConvert: ReturnType<typeof findUnconvertedTags>,
+  conceptBridges: ReturnType<typeof detectConceptBridges>,
 ): string[] {
   const actions: string[] = [];
   if (lint.unknown_type_entities.length)
@@ -119,6 +124,8 @@ function deriveActions(
     actions.push(`backfill emotional relation on ${missingRelations.length} strong-mood entries`);
   if (tagsToConvert.length)
     actions.push(`convert ${tagsToConvert.length} tags to wikilinks/relations`);
+  for (const b of conceptBridges)
+    actions.push(`add [[${b.concept}]] to ${b.entry_count} entries`);
   for (const ins of insights) actions.push(`consider insight: ${ins.kind}`);
   return actions;
 }

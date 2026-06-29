@@ -120,6 +120,10 @@ by its type — work the `suggested_actions` list top to bottom:
   from the text. If it's not clear, leave it — don't guess.
 - **convert tags** — for `tags_to_convert` (imported tags not yet entities), turn a
   tag into a `[[wikilink]]` or relation when it names a real person/place/event.
+- **add concept link** — for `concept_bridges` (a recurring tag/theme spanning several
+  entries but not yet linked), add the suggested `[[concept]]` to the cited entries
+  when the theme is real. Keep the user's wording — only APPEND the link; this connects
+  the theme so a later recall finds all of them.
 - **write insight notes** — for an insight candidate you judge real, write a
   short note into `insights/` (a normal file write) citing the evidence entry ids.
 

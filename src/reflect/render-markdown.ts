@@ -21,6 +21,7 @@ interface ReflectLike {
     trigger: { target: string; count: number }[];
   };
   tags_to_convert: { tag: string; count: number }[];
+  concept_bridges: { concept: string; reason: string; entry_count: number; evidence: string[] }[];
   suggested_actions: string[];
 }
 
@@ -87,6 +88,16 @@ export function renderReflectMarkdown(r: ReflectLike): string {
     lines.push("## Tags to convert");
     for (const t of r.tags_to_convert) {
       lines.push(`- [ ] \`${t.tag}\` (×${t.count}) → link or relation`);
+    }
+    lines.push("");
+  }
+
+  if (r.concept_bridges.length) {
+    lines.push("## Concept bridges");
+    for (const b of r.concept_bridges) {
+      lines.push(
+        `- [ ] add \`[[${b.concept}]]\` to ${b.entry_count} entries (${b.evidence.join(", ")})`,
+      );
     }
     lines.push("");
   }
