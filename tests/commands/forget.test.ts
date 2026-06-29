@@ -158,14 +158,15 @@ test("a pasted heading-shaped line inside prose is NOT mis-cut (verbatim S1)", (
 });
 
 test("ordinals renumber after a delete; the report warns", () => {
-  remember("Entry A.", "2026-06-12", "08:00");
-  remember("Entry B.", "2026-06-12", "09:00");
-  remember("Entry C.", "2026-06-12", "10:00");
-  forget(["2026-06-12#0"]); // delete A → B becomes #0, C becomes #1
-  // Old id 2026-06-12#2 (C) no longer resolves; C is now #1.
-  expect(recallCount("Entry C")).toBe(1);
-  const cAfter = run(["recall", "--vault", vault, "Entry C"]).data.results[0];
-  expect(cAfter.id).toBe("2026-06-12#1"); // renumbered
+  // Distinct content words so recall pinpoints one entry (coverage counts ≥3-char tokens).
+  remember("Ăn phở sáng.", "2026-06-12", "08:00");
+  remember("Họp nhóm trưa.", "2026-06-12", "09:00");
+  remember("Chạy bộ tối muộn.", "2026-06-12", "10:00");
+  forget(["2026-06-12#0"]); // delete the phở entry → others renumber down
+  // The "Chạy bộ" entry was #2, now #1 after the delete.
+  expect(recallCount("chạy bộ tối muộn")).toBe(1);
+  const after = run(["recall", "--vault", vault, "chạy bộ tối muộn"]).data.results[0];
+  expect(after.id).toBe("2026-06-12#1"); // renumbered
 });
 
 test("forget with no target fails with a hint", () => {

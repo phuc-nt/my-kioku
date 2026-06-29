@@ -63,6 +63,14 @@ test("single-token query is not gated to empty (cover≥1 fallback)", () => {
   expect(recallIds("phở")).toContain("2026-06-13#0");
 });
 
+test("an all-short query (≤2-char content words) still matches (countShort fallback)", () => {
+  // "ăn"→an (2 chars) is below the content-token length, but if the WHOLE query is
+  // short we must count short tokens or it'd be gated to empty. (A 2-char NAME also
+  // recalls via entity expansion, but a plain short word must work via FTS too.)
+  remember("Hôm nay ăn nhẹ thôi.", "2026-06-17", "calm/3");
+  expect(recallIds("ăn")).toContain("2026-06-17#0");
+});
+
 test("S4 true-negative: an absent term returns empty (FTS owns this)", () => {
   remember("Hôm nay đi làm bình thường", "2026-06-14");
   expect(recallIds("Singapore")).toHaveLength(0);
@@ -74,4 +82,15 @@ test("OR does not over-match: a fully-unrelated multi-token query stays empty", 
   remember("Chơi cầu lông với bạn", "2026-06-15", "happy/4");
   // None of these tokens appear in the single entry → cover 0 → empty.
   expect(recallIds("crypto bitcoin đầu tư chứng khoán")).toHaveLength(0);
+});
+
+test("coverage ignores short glue tokens + diacritic-fold collisions (S4)", () => {
+  // Benchmark q12 leak: an absent-topic query shared only a glue token ("đi"→di) and a
+  // diacritic-fold collision (query "chuyến"→chuyen vs body "chuyện"→chuyen) → cover=2
+  // under naive counting. Requiring coverage from ≥3-char CONTENT tokens drops it: the
+  // sole content overlap "chuyen" is just 1, below the gate.
+  remember("Đi nhậu với anh Hùng, ổng kể chuyện con cái, vui.", "2026-06-16", "happy/4");
+  expect(recallIds("Singapore du lịch chuyến đi nước ngoài")).toHaveLength(0);
+  // Sanity: a query that genuinely shares ≥2 content words still matches.
+  expect(recallIds("nhậu Hùng chuyện con cái")).toContain("2026-06-16#0");
 });

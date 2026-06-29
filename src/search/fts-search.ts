@@ -32,6 +32,17 @@ const MIN_PREFIX_LEN = 4;
 const FTS_MIN_COVER = 2;
 
 /**
+ * Only tokens whose folded length is ≥ this count toward COVERAGE (they still all
+ * MATCH for recall). Short tokens are grammatical glue — Vietnamese particles like
+ * "đi"→di, "ở"→o, "và"→va, English "to"/"in" — that collide incidentally across
+ * unrelated entries. The benchmark surfaced a false positive where an absent-topic
+ * query ("…chuyến đi…") covered an unrelated entry via the diacritic-fold collision
+ * chuyến/chuyện ("chuyen") + the particle "đi"; requiring coverage from ≥3-char
+ * content tokens drops that leak while real queries still cover ≥2 content words.
+ */
+const COVERAGE_MIN_TOKEN_LEN = 3;
+
+/**
  * Split raw text into folded, FTS-safe tokens. Keep Unicode letters/numbers;
  * everything else is a separator — this strips every FTS operator while preserving
  * Vietnamese words. Each token is FOLDED (đ→d + strip marks) to match the folded
@@ -74,24 +85,37 @@ export function sanitizeFtsQuery(raw: string): string {
 }
 
 /**
- * Count how many DISTINCT query tokens appear in an entry's body (folded match).
- * Used by the coverage gate: with OR matching, an entry need only share one token
- * to be returned, so we re-check overlap to demand a minimum. Mirrors the MATCH
- * semantics — the LAST token is a PREFIX match when ≥ MIN_PREFIX_LEN (just as
- * sanitizeFtsQuery adds `*`), so "deadl" counts against a body containing "deadline".
+ * Count how many DISTINCT CONTENT query tokens (folded length ≥ COVERAGE_MIN_TOKEN_LEN)
+ * appear in an entry's body (folded match). Used by the coverage gate: with OR matching,
+ * an entry need only share one token to be returned, so we re-check overlap to demand a
+ * minimum — and short grammatical-glue tokens don't count (they collide incidentally).
+ * Mirrors the MATCH semantics — the LAST token is a PREFIX match when ≥ MIN_PREFIX_LEN
+ * (just as sanitizeFtsQuery adds `*`), so "deadl" counts against a body with "deadline".
  * Folds the body once; called on the ≤limit hits FTS already returned, so cost is trivial.
  */
-function coverage(queryTokens: string[], body: string): number {
+function coverage(queryTokens: string[], body: string, countShort: boolean): number {
   const bodyTokens = foldedTokens(body);
   const bodySet = new Set(bodyTokens);
   const lastIdx = queryTokens.length - 1;
   let n = 0;
   for (let i = 0; i < queryTokens.length; i++) {
     const t = queryTokens[i]!;
+    // Glue tokens (<3 chars) don't anchor relevance, so they don't count toward the
+    // gate — UNLESS the query is ALL short (countShort), e.g. a 2-char name "Vy" or a
+    // word like "ăn" not stored as an entity; then we must count them or the query
+    // would be gated to empty. (Named entities also recall via entity expansion.)
+    if (!countShort && t.length < COVERAGE_MIN_TOKEN_LEN) continue;
     const isPrefix = i === lastIdx && t.length >= MIN_PREFIX_LEN;
     if (isPrefix ? bodyTokens.some((b) => b.startsWith(t)) : bodySet.has(t)) n++;
   }
   return n;
+}
+
+/** How many query tokens are "content" tokens (≥ COVERAGE_MIN_TOKEN_LEN) — the pool the
+ *  coverage gate can draw from. Used to pick the gate floor so an all-short query isn't
+ *  gated to empty. */
+function contentTokenCount(queryTokens: string[]): number {
+  return queryTokens.filter((t) => t.length >= COVERAGE_MIN_TOKEN_LEN).length;
 }
 
 /**
@@ -158,10 +182,17 @@ export function ftsSearch(
     .all(match, limit * 4);
 
   const queryTokens = foldedTokens(rawQuery);
-  const minCover = Math.min(FTS_MIN_COVER, queryTokens.length || 1);
+  const nContent = contentTokenCount(queryTokens);
+  // When the query has NO content tokens (all ≤2 chars, e.g. "ăn" / a 2-char name),
+  // coverage counts the short tokens instead — otherwise it could never reach the gate.
+  const countShort = nContent === 0;
+  // Gate floor is FTS_MIN_COVER, capped by how many tokens can actually count, so a
+  // single-content-word (or all-short) query falls back to cover≥1, never gated empty.
+  const coverPool = countShort ? queryTokens.length : nContent;
+  const minCover = Math.max(1, Math.min(FTS_MIN_COVER, coverPool || 1));
   const out: FtsHit[] = [];
   for (const r of rows) {
-    if (coverage(queryTokens, r.body) < minCover) continue;
+    if (coverage(queryTokens, r.body, countShort) < minCover) continue;
     out.push({ id: r.id, date: r.date, time: r.time, bm25: r.bm25 });
     if (out.length >= limit) break;
   }
