@@ -5,8 +5,11 @@ the database). Three commands cover everything. **One situation → one command.
 
 ## Golden rules
 
-1. **Store VERBATIM.** Never summarize, translate, or "clean up" what the person
-   said. Save it as-is.
+1. **Store VERBATIM, append-only.** Never summarize, translate, or "clean up" what
+   the person said — save it as-is. And never EDIT or overwrite an entry you already
+   wrote: a correction is a NEW `remember` that references the old day/fact, never a
+   rewrite of the original text. (If a fact was wrong, write the correction as its own
+   entry; if it must truly be removed, use `forget`.) The old words are the record.
 2. **Link people, places, events** with `[[Name]]` while writing — that builds
    the memory graph. Same name every time (use the canonical name, not variants).
 3. **Mood** is one free word, optional 1–5 intensity: `happy`, `tired/2`, `buồn/4`.
@@ -181,3 +184,6 @@ my-kioku forget "2026-06-12#1" --dry-run  # preview what would be removed (no wr
   proper noun to Vietnamese (or vice-versa). Mirror what the person wrote.
 - ❌ Recalling a raw natural-language question verbatim. Enrich it first —
   pronoun→`[[Name]]`, add known entities + synonyms (see "Enrich the query first").
+- ❌ Opening an old daily note and rewriting/overwriting an entry to "fix" it — that
+  destroys the record (a live agent corrupted "Sữa" → "Mít" this way). Write a NEW
+  correction entry instead; never edit past text by hand.
