@@ -10,6 +10,14 @@ Round-5 (end-to-end agent) gaps. No new dependency; no schema change. Driven by 
 lesson that a cheap model can't be trusted to pass flags — must-be-correct behavior
 moves into the deterministic engine.
 
+### Changed
+
+- **`SKILL.md` is now append-only about corrections.** Golden rule #1 forbids editing or
+  overwriting a past entry — a correction is a NEW entry referencing the old fact (use
+  `forget` to remove). A live-agent benchmark caught an LLM rewriting an old entry's body
+  to "fix" it; a 3× reproduce showed it was variance, not a deterministic flaw, so the
+  fix is a prompt rule rather than an engine guard.
+
 ### Added
 
 - **Auto event-date inference in `remember`.** When no `--date` is passed, the engine
