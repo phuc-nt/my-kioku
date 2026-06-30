@@ -158,6 +158,46 @@ test("year-less inference warns that the year was guessed", () => {
   expect((r.data.warnings ?? []).some((w: string) => w.includes("year inferred"))).toBe(true);
 });
 
+// --- carry-over B: inline #hashtag → tag rows (body stays verbatim) ---
+
+test("inline #hashtag becomes a tag row; the #tag stays verbatim in the body (S1)", () => {
+  const body = "đi #chạy_bộ với #Vy buổi sáng";
+  run(["remember", "--vault", vault, "--date", "2026-06-12", "--stdin"], body);
+  // Body byte-for-byte (the #tags remain in prose).
+  const stored = readFileSync(dailyNotePath(vault, "2026-06-12"), "utf8");
+  expect(stored).toContain("đi #chạy_bộ với #Vy buổi sáng");
+  // The index has the derived tag rows.
+  const { openDb } = require("../../src/index/db.ts");
+  const { syncIfStale } = require("../../src/index/lazy-sync.ts");
+  const db = openDb(vault);
+  syncIfStale(db, vault);
+  const tags = db.query("SELECT tag FROM tags ORDER BY tag").all().map((r: { tag: string }) => r.tag);
+  db.close();
+  expect(tags).toContain("chạy_bộ");
+  expect(tags).toContain("Vy");
+});
+
+test("a # in code/heading/URL does NOT create a tag", () => {
+  run(["remember", "--vault", vault, "--date", "2026-06-12", "--stdin"], "viết C# xem example.com/#frag");
+  const { openDb } = require("../../src/index/db.ts");
+  const { syncIfStale } = require("../../src/index/lazy-sync.ts");
+  const db = openDb(vault);
+  syncIfStale(db, vault);
+  const n = db.query("SELECT COUNT(*) c FROM tags").get().c as number;
+  db.close();
+  expect(n).toBe(0);
+});
+
+test("tag rows are rebuildable from markdown (S2 reindex round-trip)", () => {
+  run(["remember", "--vault", vault, "--date", "2026-06-12", "--stdin"], "tập #yoga sáng nay");
+  run(["reindex", "--vault", vault]);
+  const { openDb } = require("../../src/index/db.ts");
+  const db = openDb(vault);
+  const tags = db.query("SELECT tag FROM tags").all().map((r: { tag: string }) => r.tag);
+  db.close();
+  expect(tags).toContain("yoga"); // survived a full drop+rebuild
+});
+
 test("entry is immediately queryable via the index after remember", () => {
   run(["remember", "--vault", vault, "--date", "2026-06-12", "Ăn phở ngon"]);
   // Re-open the index and FTS-search.

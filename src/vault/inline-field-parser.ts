@@ -46,6 +46,32 @@ export function parseRelationLine(line: string): RelationLine | null {
   return { verb, targets };
 }
 
+// An inline `#hashtag` in the entry body. Unlike `tags::` (a leading field that is
+// consumed/removed), a hashtag lives INSIDE the prose and MUST stay verbatim (S1) —
+// we only DERIVE a tag row from it. Grammar: `#` then a Unicode LETTER, then letters/
+// digits/underscore (so `#thể_dục`/`#chạy_bộ` work but `#123` doesn't). The lookbehind
+// rejects `C#`, `a#b`, `##` (markdown heading), `/#frag` (URL) — `#` must not follow a
+// letter/digit/_/#// (so it's a standalone hashtag, not part of a word/heading/URL).
+const INLINE_HASHTAG = /(?<![\p{L}\p{N}_#/])#(\p{L}[\p{L}\p{N}_]*)/gu;
+
+/**
+ * Extract inline `#hashtag` tokens from an entry body as tag strings (without the `#`).
+ * Read-only — never modifies the text. Deduped, order-preserved. NFC so a composed/
+ * decomposed Vietnamese tag yields one key.
+ */
+export function extractInlineHashtags(text: string): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const m of text.normalize("NFC").matchAll(INLINE_HASHTAG)) {
+    const tag = m[1]!;
+    if (!seen.has(tag)) {
+      seen.add(tag);
+      out.push(tag);
+    }
+  }
+  return out;
+}
+
 /**
  * Parse a `tags:: a, b, c` line into plain string tags. Returns null unless the
  * line is exactly `tags::` + a non-empty comma list with NO wikilinks (a

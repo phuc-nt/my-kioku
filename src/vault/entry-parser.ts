@@ -8,7 +8,11 @@
 // heading-shaped line (e.g. a pasted "## 10:00 standup") is NOT split out — it
 // stays inside the entry text, preserving the verbatim contract.
 
-import { parseRelationLine, parseTagsLine } from "./inline-field-parser.ts";
+import {
+  parseRelationLine,
+  parseTagsLine,
+  extractInlineHashtags,
+} from "./inline-field-parser.ts";
 import { entryRanges } from "./entry-block-range.ts";
 
 export interface ParsedEntry {
@@ -149,6 +153,15 @@ function extractLeadingFields(rawLines: string[]): LeadingFields {
   }
 
   const text = trimBlock(lines.slice(i));
+  // Merge inline `#hashtag` tokens from the verbatim body into the tag set (the body
+  // text itself is left UNCHANGED — the #tag stays in prose; we only derive tag rows).
+  // tags:: tags come first (authoring order), then inline hashtags, deduped.
+  const inlineTags = extractInlineHashtags(text);
+  if (inlineTags.length > 0) {
+    tags ??= [];
+    for (const t of inlineTags) if (!tags.includes(t)) tags.push(t);
+  }
+
   const out: LeadingFields = { text };
   if (mood !== undefined) out.mood = mood;
   if (intensity !== undefined) out.intensity = intensity;
