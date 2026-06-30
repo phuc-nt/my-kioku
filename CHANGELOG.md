@@ -4,7 +4,7 @@ All notable changes to this project are documented here. Format based on
 [Keep a Changelog](https://keepachangelog.com/); versions follow
 [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.5.0] - 2026-06-30
 
 Round-5 (end-to-end agent) gaps. No new dependency; no schema change. Driven by the
 lesson that a cheap model can't be trusted to pass flags — must-be-correct behavior
@@ -222,5 +222,6 @@ disposable index that rebuilds 100% from the vault. No vector search.
 - Validated end-to-end against real data: 177 legacy memory blocks → 68 unique entries,
   0 parse failures.
 
+[0.5.0]: https://github.com/phuc-nt/my-kioku/releases/tag/v0.5.0
 [0.4.0]: https://github.com/phuc-nt/my-kioku/releases/tag/v0.4.0
 [0.1.0]: https://github.com/phuc-nt/my-kioku/releases/tag/v0.1.0
