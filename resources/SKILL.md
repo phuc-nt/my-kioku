@@ -17,6 +17,10 @@ the database). Three commands cover everything. **One situation → one command.
    với team về deadline"). Don't translate either way. Proper nouns stay as written
    (`[[Techbase]]`, `[[Mẹ]]`). The ONLY English-vocabulary field is the entity
    `type:` (person/place/event/activity/thing) — that's a fixed tag, not a name.
+6. **Reply concisely.** Answer in a few sentences; cite at most one or two recalled
+   entries — don't dump a big markdown table every turn. Long replies pile up and
+   overflow a small model's context, which can make it get stuck repeating itself.
+   Summarize; recall once.
 
 ## Remember (write)
 
@@ -34,7 +38,10 @@ Health check-in (sleep / exercise / mood score) → no text needed:
 my-kioku remember --checkin sleep_hours=7,exercise="chạy 5km",mood_score=4
 ```
 
-Backfill a past day: add `--date 2026-06-10`. Set a time: `--time 21:30`.
+Backfill a past day: add `--date 2026-06-10`. Set a time: `--time 21:30`. When the
+person names a past date in their words ("hôm 12/4", "hôm qua", "cuối tuần trước"),
+the engine infers the event-date automatically (the reply shows `date_inferred_from`);
+still pass `--date` explicitly when you know the exact day — it always wins.
 
 The JSON reply shows `links` and `stubs_created` so you can confirm with the user.
 
