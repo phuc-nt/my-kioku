@@ -14,6 +14,7 @@ import {
   entriesWithRelationType,
   RELATION_BONUS,
 } from "../search/relation-expansion.ts";
+import { entriesLinkingTypedEntity } from "../search/type-filter.ts";
 import { buildDigest } from "../search/digest.ts";
 import {
   hydrate,
@@ -28,6 +29,7 @@ export interface RecallArgs {
   query?: string;
   entity?: string;
   relation?: string; // --relation <type> filter (joy/trigger/with/eases/...)
+  type?: string; // --type <entity-type> filter (person/place/event/activity/thing)
   digest?: boolean;
   from?: string;
   to?: string;
@@ -153,9 +155,19 @@ function runSearch(db: Database, args: RecallArgs, range: DateRange | null) {
     else scored.set(id, { id, score: RELATION_BONUS });
   }
 
-  // `--relation` is a hard filter: restrict results to entries that matched it.
+  // Source 4: `--type <entity-type>` filter (entries linking an entity of that type).
+  // Like --relation it is a HARD filter; with no query/entity it SEEDS the result set
+  // (so `recall --type person` lists everything linking a person). Never invents a hit
+  // — a type with no matching entity → empty set → empty results (S4).
+  const typeIds = args.type ? entriesLinkingTypedEntity(db, args.type, range) : null;
+  if (typeIds) {
+    for (const id of typeIds) if (!scored.has(id)) scored.set(id, { id, score: ENTITY_BONUS });
+  }
+
+  // Hard filters: `--relation` and `--type` each restrict results to their matched set.
   let hits = [...scored.values()];
   if (args.relation) hits = hits.filter((h) => relIds.has(h.id));
+  if (typeIds) hits = hits.filter((h) => typeIds.has(h.id));
 
   // Apply the date window (if any) and hydrate.
   const hydrated = hits
@@ -179,6 +191,7 @@ function runSearch(db: Database, args: RecallArgs, range: DateRange | null) {
     query: args.query ?? null,
     entity: args.entity ?? null,
     relation: args.relation ?? null,
+    type: args.type ?? null,
     count: hydrated.length,
     results: hydrated.slice(0, limit),
     entity_context: expansion.entities.map(entityCtx),

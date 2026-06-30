@@ -29,6 +29,7 @@ interface ReflectLike {
     old_entity: string;
     new_entity: string;
   }[];
+  entity_type_suggestions: { name: string; suggested: string; reason: string }[];
   suggested_actions: string[];
 }
 
@@ -115,6 +116,14 @@ export function renderReflectMarkdown(r: ReflectLike): string {
       lines.push(
         `- [ ] mark \`${c.older_id}\` superseded by \`${c.newer_id}\`? (${c.type}: ${c.old_entity} → ${c.new_entity})`,
       );
+    }
+    lines.push("");
+  }
+
+  if (r.entity_type_suggestions.length) {
+    lines.push("## Entity type suggestions");
+    for (const s of r.entity_type_suggestions) {
+      lines.push(`- [ ] set \`[[${s.name}]]\` type → \`${s.suggested}\` (${s.reason})`);
     }
     lines.push("");
   }

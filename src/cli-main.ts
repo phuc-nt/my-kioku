@@ -12,6 +12,7 @@ import { runRecall } from "./commands/recall.ts";
 import { runReflect } from "./commands/reflect.ts";
 import { runImport } from "./commands/import-kioku-lite.ts";
 import { runEntityMerge } from "./commands/entity-merge.ts";
+import { runEntityList } from "./commands/entity-list.ts";
 import { runForget } from "./commands/forget.ts";
 import { runWatch } from "./commands/watch.ts";
 
@@ -76,6 +77,7 @@ export function main(): void {
       // recall
       entity: { type: "string" },
       relation: { type: "string" },
+      type: { type: "string" },
       digest: { type: "boolean" },
       from: { type: "string" },
       to: { type: "string" },
@@ -128,6 +130,7 @@ export function main(): void {
         query: positionals[0],
         entity: str(values.entity),
         relation: str(values.relation),
+        type: str(values.type),
         digest: values.digest === true,
         from: str(values.from),
         to: str(values.to),
@@ -148,12 +151,15 @@ export function main(): void {
         dryRun: values["dry-run"] === true,
       });
     case "entity": {
-      // Sub-action: currently only `merge`.
+      // Sub-actions: `merge` | `list`.
       const action = positionals[0];
+      if (action === "list") {
+        return runEntityList({ vaultFlag, type: str(values.type) });
+      }
       if (action !== "merge") {
         return fail(
           `Unknown entity action: ${action ?? "(none)"}`,
-          'Usage: entity merge "B" --into "A" [--dry-run].',
+          'Usage: entity merge "B" --into "A" [--dry-run]  |  entity list [--type person].',
         );
       }
       return runEntityMerge({

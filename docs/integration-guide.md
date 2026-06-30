@@ -70,8 +70,10 @@ my-kioku recall --relation joy --entity "Mẹ"
 my-kioku recall --digest --since 7d      # compact summary for a session-start hook
 ```
 
-Flags: `--entity`, `--relation joy|trigger|with|eases|<verb>`, `--since 7d|YYYY-MM-DD`,
-`--from`/`--to`, `--limit`, `--digest`.
+Flags: `--entity`, `--relation joy|trigger|with|eases|<verb>`, `--type
+person|place|event|activity|thing`, `--since 7d|YYYY-MM-DD`, `--from`/`--to`, `--limit`,
+`--digest`. `--type` is a hard filter (entries linking an entity of that type); with no
+query it lists everything linking a typed entity. A type with no matching entity → empty.
 
 **Matching is OR + coverage-gated.** A query matches an entry that shares ANY of its
 (diacritic-folded) terms, ranked by how many terms it covers — so a richer query
@@ -108,7 +110,11 @@ my-kioku reflect --since 30d
 100% deterministic, read-only. `data` keys: `period, lint, alias_candidates,
 mood_stats, health_stats, insight_candidates, missing_emotional_relation,
 relation_summary, tags_to_convert, concept_bridges, superseded_candidates,
-suggested_actions`.
+entity_type_suggestions, suggested_actions`.
+
+`entity_type_suggestions[]`: `{ name, file, suggested, reason }` — a deterministic type
+guess (e.g. a `joy::`/`with::` relation target → `person`) for a `type:unknown` entity.
+The agent confirms and writes `type:` to the entity frontmatter. Suggestion only.
 
 `superseded_candidates[]`: `{ older_id, newer_id, type, old_entity, new_entity,
 shared_context }` — an older fact that LOOKS replaced by a newer one (two distinct
@@ -149,6 +155,7 @@ only its disposable index and structured keys, never the markdown you wrote.
 | `reindex` | Rebuild the disposable SQLite index from the vault. |
 | `import --from-kioku-lite <folder>` | Migrate legacy kioku-lite markdown (`--dry-run`). |
 | `entity merge "B" --into "A"` | Fold one entity into another (`--dry-run`). |
+| `entity list [--type X]` | List entities (+ mention counts), optionally filtered by type. |
 | `forget <id>` / `forget --entity "X"` | Delete an entry block (privacy). `--redact` keeps the heading + mood/relations/tags and blanks only the body; `--dry-run` previews. |
 | `watch [--interval 30]` | Foreground loop keeping the index in sync with manual edits. |
 

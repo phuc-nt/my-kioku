@@ -4,6 +4,31 @@ All notable changes to this project are documented here. Format based on
 [Keep a Changelog](https://keepachangelog.com/); versions follow
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+Round-5 (end-to-end agent) gaps. No new dependency; no schema change. Driven by the
+lesson that a cheap model can't be trusted to pass flags — must-be-correct behavior
+moves into the deterministic engine.
+
+### Added
+
+- **Auto event-date inference in `remember`.** When no `--date` is passed, the engine
+  parses a Vietnamese date expression from the entry text (`hôm 12/4`, `ngày 12 tháng 4`,
+  `hôm qua`, `tuần trước`, `cuối tuần`, `thứ 7 vừa rồi`, `12/04/2026`) and stamps it;
+  year-less dates resolve to the nearest past year. Conservative: a bare `d/m` needs
+  `hôm`/`ngày` context (so `3/4 cốc`, `tỉ số 2/1` are not dates), ambiguous phrases keep
+  today, the body text is never modified. The reply carries `date_inferred_from` and
+  warns when a year was guessed; explicit `--date` always overrides. Fixes Round-5's
+  "every entry stamped today" timeline corruption without depending on the agent.
+- **Inline `#hashtag` tags.** A `#hashtag` in the entry body now also yields a tag row
+  (the token stays verbatim in the body), so `reflect`'s `concept_bridges` works for
+  agents that write inline hashtags rather than `tags::` lines.
+- **Filter/list by entity type.** New `entity list [--type person|place|…]` and
+  `recall --type <type>` (a hard filter: entries linking an entity of that type; empty
+  when none match). `reflect` adds `entity_type_suggestions` — a deterministic type guess
+  (e.g. a relation target → `person`) for `type:unknown` entities, for the agent to
+  confirm and write to frontmatter.
+
 ## [0.4.0] - 2026-06-29
 
 Semantic-recall lift, no new dependency. A Phase-0 spike (real install of a local

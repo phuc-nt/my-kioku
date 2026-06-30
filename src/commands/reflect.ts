@@ -19,6 +19,7 @@ import {
 } from "../reflect/relation-checks.ts";
 import { detectConceptBridges } from "../reflect/concept-bridge.ts";
 import { detectSupersededCandidates } from "../reflect/superseded-facts.ts";
+import { suggestEntityTypes } from "../reflect/entity-type-suggest.ts";
 import { renderReflectMarkdown } from "../reflect/render-markdown.ts";
 
 export interface ReflectArgs {
@@ -81,6 +82,7 @@ function assembleReport(db: ReturnType<typeof openDb>, range: DateRange) {
   const tagsToConvert = findUnconvertedTags(db);
   const conceptBridges = detectConceptBridges(db, range);
   const supersededCandidates = detectSupersededCandidates(db, range);
+  const entityTypeSuggestions = suggestEntityTypes(db);
 
   return {
     period: range,
@@ -94,6 +96,7 @@ function assembleReport(db: ReturnType<typeof openDb>, range: DateRange) {
     tags_to_convert: tagsToConvert,
     concept_bridges: conceptBridges,
     superseded_candidates: supersededCandidates,
+    entity_type_suggestions: entityTypeSuggestions,
     suggested_actions: deriveActions(
       lint,
       aliasCandidates,
@@ -102,6 +105,7 @@ function assembleReport(db: ReturnType<typeof openDb>, range: DateRange) {
       tagsToConvert,
       conceptBridges,
       supersededCandidates,
+      entityTypeSuggestions,
     ),
   };
 }
@@ -115,6 +119,7 @@ function deriveActions(
   tagsToConvert: ReturnType<typeof findUnconvertedTags>,
   conceptBridges: ReturnType<typeof detectConceptBridges>,
   supersededCandidates: ReturnType<typeof detectSupersededCandidates>,
+  entityTypeSuggestions: ReturnType<typeof suggestEntityTypes>,
 ): string[] {
   const actions: string[] = [];
   if (lint.unknown_type_entities.length)
@@ -135,6 +140,8 @@ function deriveActions(
     actions.push(
       `mark ${c.older_id} superseded by ${c.newer_id}? (${c.old_entity} → ${c.new_entity})`,
     );
+  if (entityTypeSuggestions.length)
+    actions.push(`set type of ${entityTypeSuggestions.length} unknown-type entities`);
   for (const ins of insights) actions.push(`consider insight: ${ins.kind}`);
   return actions;
 }

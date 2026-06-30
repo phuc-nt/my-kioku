@@ -106,7 +106,10 @@ by its type — work the `suggested_actions` list top to bottom:
 
 - **classify** entities with `type: unknown` — read the entries that mention
   them, decide person/place/event/activity/thing, then edit the entity note's
-  frontmatter `type:` (plain file edit).
+  frontmatter `type:` (plain file edit). `reflect` may pre-suggest a type in
+  `entity_type_suggestions` (e.g. a `joy::`/`with::` target → person) — confirm it
+  against the entries before applying. Once typed, `recall --type person` and
+  `entity list --type place` can filter/list by type.
 - **review alias pairs** — if two names are the same entity, merge them:
   `my-kioku entity merge "bạn Hùng" --into "Hùng"`. **If unsure, ASK the user
   first** (two different people can share a name).
