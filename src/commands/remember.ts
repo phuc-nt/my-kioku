@@ -6,6 +6,7 @@ import { readFileSync } from "node:fs";
 import { ok, fail } from "../lib/json-output.ts";
 import { resolveVault, NO_VAULT_HINT } from "../config.ts";
 import { todayISO, nowHHMM, isValidISODate } from "../lib/dates.ts";
+import { inferEventDate } from "../lib/vietnamese-date-parser.ts";
 import { appendEntry, setCheckinMeta } from "../vault/daily-note.ts";
 import { ensureStub } from "../vault/entity-note.ts";
 import { extractWikilinks } from "../vault/wikilink-parser.ts";
@@ -70,9 +71,29 @@ export function runRemember(args: RememberArgs): never {
   }
   text = text.replace(/\s+$/, ""); // trailing-whitespace trim only
 
-  const date = args.date ?? todayISO();
-  if (!isValidISODate(date)) {
-    return fail(`Invalid --date: ${args.date}`, "Expected YYYY-MM-DD.");
+  // Date resolution: explicit --date wins; else try to INFER an event-date from the
+  // text (a cheap agent won't pass --date — R5). Inference is conservative (confident
+  // match only); on no match we keep today. The text is never modified (S1).
+  let date: string;
+  let dateInferredFrom: string | undefined;
+  if (args.date !== undefined) {
+    date = args.date;
+    if (!isValidISODate(date)) {
+      return fail(`Invalid --date: ${args.date}`, "Expected YYYY-MM-DD.");
+    }
+  } else {
+    const inferred = text ? inferEventDate(text) : null;
+    if (inferred) {
+      date = inferred.date;
+      dateInferredFrom = inferred.phrase;
+      if (inferred.yearGuessed) {
+        warnings.push(
+          `Event-date year inferred for "${inferred.phrase}" → ${date} (no year in text); pass --date to be explicit.`,
+        );
+      }
+    } else {
+      date = todayISO();
+    }
   }
   const time = args.time ?? nowHHMM();
 
@@ -98,6 +119,8 @@ export function runRemember(args: RememberArgs): never {
 
   const db = openDb(vault);
   const result: Record<string, unknown> = { date };
+  // Surface the source phrase when the date was inferred (so the agent/user can verify).
+  if (dateInferredFrom !== undefined) result.date_inferred_from = dateInferredFrom;
   // Paths touched this call → re-indexed once at the end (covers checkin-only too).
   const touchedPaths = new Set<string>();
 

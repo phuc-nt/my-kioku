@@ -116,6 +116,48 @@ test("empty remember (no text, no checkin) fails", () => {
   expect(r.exitCode).toBe(1);
 });
 
+// --- 9A: auto event-date inference (no --date) ---
+
+test("infers event-date from VI text + reports date_inferred_from; body verbatim (S1)", () => {
+  const body = "hôm 12/4 Vy sốt cao";
+  const r = run(["remember", "--vault", vault, "--stdin"], body);
+  expect(r.ok).toBe(true);
+  expect(r.data.date.endsWith("-04-12")).toBe(true); // month/day from "12/4"
+  expect(r.data.date_inferred_from).toContain("12/4");
+  // The body is stored byte-for-byte — the date phrase stays IN the text.
+  const stored = readFileSync(dailyNotePath(vault, r.data.date), "utf8");
+  expect(stored).toContain("hôm 12/4 Vy sốt cao");
+});
+
+test("explicit --date overrides inference", () => {
+  const r = run(["remember", "--vault", vault, "--date", "2026-01-01", "--stdin"], "hôm qua ăn phở");
+  expect(r.ok).toBe(true);
+  expect(r.data.date).toBe("2026-01-01");
+  expect(r.data.date_inferred_from).toBeUndefined();
+});
+
+test("vague / no date expression keeps today (no inference)", () => {
+  const { todayISO } = require("../../src/lib/dates.ts");
+  const r = run(["remember", "--vault", vault, "--stdin"], "dạo này hay lo lắng");
+  expect(r.ok).toBe(true);
+  expect(r.data.date).toBe(todayISO());
+  expect(r.data.date_inferred_from).toBeUndefined();
+});
+
+test("a quantity like 3/4 is NOT mistaken for a date (safety)", () => {
+  const { todayISO } = require("../../src/lib/dates.ts");
+  const r = run(["remember", "--vault", vault, "--stdin"], "pha 3/4 cốc cà phê sáng nay");
+  expect(r.ok).toBe(true);
+  expect(r.data.date).toBe(todayISO()); // kept today, not 0?-0?
+  expect(r.data.date_inferred_from).toBeUndefined();
+});
+
+test("year-less inference warns that the year was guessed", () => {
+  const r = run(["remember", "--vault", vault, "--stdin"], "hôm 12/4 đi chơi");
+  expect(r.ok).toBe(true);
+  expect((r.data.warnings ?? []).some((w: string) => w.includes("year inferred"))).toBe(true);
+});
+
 test("entry is immediately queryable via the index after remember", () => {
   run(["remember", "--vault", vault, "--date", "2026-06-12", "Ăn phở ngon"]);
   // Re-open the index and FTS-search.
