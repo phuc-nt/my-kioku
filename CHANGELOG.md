@@ -23,6 +23,12 @@ moves into the deterministic engine.
 - **Inline `#hashtag` tags.** A `#hashtag` in the entry body now also yields a tag row
   (the token stays verbatim in the body), so `reflect`'s `concept_bridges` works for
   agents that write inline hashtags rather than `tags::` lines.
+- **Stronger latest-fact ranking on "current/now" queries.** When a recall query carries
+  a current-intent marker (`hiện tại`, `bây giờ`, `đang`, `now`, `current`), a superseded
+  entry is ordered at a fraction of its score so the newer fact ranks above it even if the
+  old one matched more keywords. Ordering only — the old fact is never removed (a history
+  query like "công việc cũ" has no marker and is unaffected). Closes the Round-4
+  "tiebreak-only didn't override lexical bias" gap.
 - **Filter/list by entity type.** New `entity list [--type person|place|…]` and
   `recall --type <type>` (a hard filter: entries linking an entity of that type; empty
   when none match). `reflect` adds `entity_type_suggestions` — a deterministic type guess

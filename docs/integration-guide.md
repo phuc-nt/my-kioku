@@ -89,7 +89,10 @@ translate). A term that appears nowhere returns an empty result (no fabricated h
   tags[], superseded, score }`. `body` is the VERBATIM entry text. `score` is a relevance
   number (higher = better; NOT stable across queries — for ordering only). `superseded`
   is the newer entry id that replaces this one (or `null`); a superseded entry is demoted
-  among equal-relevance peers but never dropped, so a past-fact query still finds it.
+  among equal-relevance peers but never dropped, so a past-fact query still finds it. When
+  the query carries a current/now marker (`hiện tại`, `bây giờ`, `đang`, `now`, `current`),
+  the demotion is stronger so the newer fact ranks first — still ordering-only (the old
+  fact stays in results for a "what was my previous…" query).
 - `entity_context[]`: entities the query/`--entity` matched —
   `{ name, type, aliases[], total_mentions_all_time }`. Useful to show "who/what this is
   about". Empty when nothing matched.

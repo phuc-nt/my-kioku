@@ -15,6 +15,7 @@ import {
   RELATION_BONUS,
 } from "../search/relation-expansion.ts";
 import { entriesLinkingTypedEntity } from "../search/type-filter.ts";
+import { detectCurrentIntent } from "../search/current-intent.ts";
 import { buildDigest } from "../search/digest.ts";
 import {
   hydrate,
@@ -42,6 +43,12 @@ const ENTITY_BONUS = 0.3;
 // whole query as a phrase above one with the same words scattered (both already share
 // the normalized FTS score), without overriding entity/relation signals.
 const PHRASE_BONUS = 0.2;
+// When the query carries a "current/now" intent, a superseded entry is ordered as if
+// its relevance were this fraction of its real score — enough to drop the old fact
+// BELOW its replacement, but applied to ORDERING ONLY (after selection), so the old
+// fact is never removed from results (a "what was my old job" query, which has no
+// current-intent keyword, is unaffected and still finds it). S4-safe by construction.
+const SUPERSEDED_CURRENT_FACTOR = 0.5;
 
 interface ScoredHit {
   id: string;
@@ -175,14 +182,17 @@ function runSearch(db: Database, args: RecallArgs, range: DateRange | null) {
     .filter((e): e is HydratedEntry => e !== null)
     .filter((e) => inRange(e.date, range));
 
-  // Sort by score desc; among CLOSE scores, demote a superseded ("no longer current")
-  // entry below its non-superseded peer; then recency. The demotion is a TIEBREAK, not
-  // a score subtraction — so it never pushes a superseded entry out of the result set
-  // (a "what was my OLD job" query still finds it), it only orders the newer fact first
-  // when relevance is otherwise comparable (M2).
+  // Ordering score: when the query has a "current/now" intent, a superseded entry is
+  // ordered at a fraction of its score so the newer fact ranks above it even if the old
+  // fact matched more keywords. This affects ORDER ONLY — `hydrated` membership is
+  // already fixed, so the old fact is never removed (S4). Without current-intent the
+  // factor is 1 and behavior is exactly v0.4.0 (superseded stays a pure tiebreak).
+  const currentIntent = detectCurrentIntent(args.query);
+  const orderScore = (e: HydratedEntry): number =>
+    currentIntent && e.superseded ? e.score * SUPERSEDED_CURRENT_FACTOR : e.score;
   hydrated.sort(
     (a, b) =>
-      b.score - a.score ||
+      orderScore(b) - orderScore(a) ||
       supersededRank(a) - supersededRank(b) ||
       cmpRecency(a, b),
   );
