@@ -5,10 +5,10 @@ Generated from source audit of v1 implementation (150 passing tests, 8 phases co
 ## Module Overview
 
 ### src/cli.ts (176 LOC)
-- **Purpose**: CLI entry point; routes 8 commands via node:util parseArgs
+- **Purpose**: CLI entry point; routes 9 commands via node:util parseArgs
 - **Exports**: main() entry point
-- **Flags**: --vault, --stdin, --mood, --time, --date, --checkin, --entity, --digest, --since, --from, --to, --limit, --md, --from-kioku-lite, --dry-run, --into, --interval, --skill, --hook
-- **Commands**: init, remember, recall, reflect, reindex, import, entity, watch
+- **Flags**: --vault, --stdin, --mood, --time, --date, --checkin, --entity, --digest, --since, --from, --to, --limit, --md, --from-kioku-lite, --dry-run, --into, --interval, --skill, --hook, --type, --relation, --redact
+- **Commands**: init, remember, recall, reflect, reindex, import, entity (merge|list), forget, watch
 
 ### src/config.ts (71 LOC)
 - **Purpose**: Vault path resolution (--vault flag → env MY_KIOKU_VAULT → ~/.my-kioku/config.json)
@@ -22,7 +22,7 @@ Generated from source audit of v1 implementation (150 passing tests, 8 phases co
 | `entity-note.ts` | ~100 | ensureStub(), mergeEntities() — entity file ops |
 | `entry-parser.ts` | ~150 | parseEntries(), parseMoodValue(), extractLeadingFields() — split entries, extract mood/relations/tags |
 | `entry-block-range.ts` | ~60 | entryRanges() — deterministic block boundaries; shared by parseEntries + forget for byte-accurate deletion |
-| `inline-field-parser.ts` | ~60 | parseRelationLine(), parseTagsLine() — strict matchers for relation + tag lines |
+| `inline-field-parser.ts` | ~70 | parseRelationLine(), parseTagsLine(), extractInlineHashtags() — strict matchers for relation/tag lines; extracts inline `#hashtag` tokens as tags (verbatim in body, derived as tag rows) |
 | `frontmatter.ts` | ~80 | parseFrontmatter(), renderFrontmatter() — YAML boundaries |
 | `wikilink-parser.ts` | ~60 | extractWikilinks() — find [[Name]] in text |
 | `vault-paths.ts` | ~40 | dailyNoteRelPath(), entityRelPath() — construct paths |
@@ -50,6 +50,8 @@ a single `DERIVED_TABLES` list (exported from db.ts) so no stale rows survive ei
 | `fts-search.ts` | ~170 | ftsSearch() with OR-joined tokens + coverage gate (FTS_MIN_COVER=2); sanitizeFtsQuery joins folded tokens with OR (was AND); coverage gate drops single-token noise but allows short queries; foldedPhrase/ftsPhraseMatch for contiguous-phrase boost |
 | `entity-expansion.ts` | ~80 | expandQuery() — find entities linked in query results |
 | `relation-expansion.ts` | ~60 | expandByRelation(), entriesWithRelationType() — find entries by emotion relation target/type; RELATION_BONUS (0.5) |
+| `type-filter.ts` | ~40 | entriesLinkingTypedEntity() — hard filter for `recall --type <entity-type>` (folded entity↔links join) |
+| `current-intent.ts` | ~30 | detectCurrentIntent() — keyword match for "current/now" intent (hiện tại/bây giờ/đang/now/current); demotes superseded entry ordering |
 | `hydrate.ts` | ~70 | hydrate() — inflate scored entry id into full result (mood, relations, tags, superseded always present) |
 | `digest.ts` | ~60 | digestRecent() — summarize last N days for session hooks |
 
@@ -70,21 +72,23 @@ coverage gate then drops incidental one-word overlaps while preserving true nega
 | `alias-similarity.ts` | ~70 | findAliasCandidates() — Levenshtein + diacritics |
 | `insight-candidates.ts` | ~100 | detectInsights() — spikes, patterns, frequency changes |
 | `concept-bridge.ts` | ~120 | detectConceptBridges() — finds tags appearing ≥3 times not yet a wikilink; suggests [[concept]] links to grow graph |
+| `entity-type-suggest.ts` | ~60 | suggestEntityTypes() — heuristic type inference for `type:unknown` entities (e.g., name targeted by with/joy/trigger/eases relations → person); precision-first (no signal → omit) |
 | `superseded-facts.ts` | ~190 | detectSupersededCandidates() — pairs (older, newer) entries linking distinct entities of same supersedable type (employer/workplace/job/company); agent writes `superseded:: <newer-id>` to mark |
 | `render-markdown.ts` | ~80 | renderReflectMarkdown() — format report for Obsidian |
 
 **All traceable**: every finding has entry_id or file reference.
 
-### src/commands/ (9 command implementations)
+### src/commands/ (10 command implementations)
 | File | LOC | Purpose |
 |------|-----|---------|
 | `init.ts` | ~110 | Create vault structure + write vault-version.json; optionally copy SKILL.md, print hook setup |
-| `remember.ts` | ~180 | Append entry + auto-stub entities + index; one call, all operations; round-trip relations/tags |
-| `recall.ts` | ~200 | FTS search + entity expansion + relation expansion + time filters + digest mode; --relation <type> filter; demotes superseded entries as tiebreak (never buries) |
-| `reflect.ts` | ~110 | Scan vault → lint + stats + relation/tag detectors + concept-bridge + superseded-candidates for living loop |
+| `remember.ts` | ~180 | Append entry + auto-stub entities + index; auto-infers event-date from Vietnamese text when --date absent (conservative; reply includes `date_inferred_from`); one call, all operations; round-trip relations/tags + inline `#hashtag` |
+| `recall.ts` | ~200 | FTS search + entity expansion + relation expansion + --type hard filter (entries linking typed entities) + time filters + digest mode; --relation <type> filter; current-intent keyword (hiện tại/bây giờ/đang) demotes superseded ordering; demotes as tiebreak (never buries) |
+| `reflect.ts` | ~110 | Scan vault → lint + stats + relation/tag detectors + concept-bridge + superseded-candidates + entity-type suggestions for living loop; `data` keys include concept_bridges, superseded_candidates, entity_type_suggestions |
 | `reindex.ts` | ~40 | Drop index, rebuild from vault |
 | `import-kioku-lite.ts` | ~100 | Orchestrate markdown folder migration; uses extracted parser |
 | `import-kioku-lite-parser.ts` | ~80 | Pure parsers for kioku-lite format; handles # Kioku — heading, Python-list tags, partial event_time fallback |
+| `entity-list.ts` | ~60 | List entities (optionally filtered by --type), all-time mention counts; orders by mentions desc, name asc |
 | `entity-merge.ts` | ~120 | Fold entity B into A; rewrite links + merge metadata |
 | `forget.ts` | ~220 | Delete/redact entry blocks by id or --entity; uses entry-block-range for byte-accurate boundaries; --dry-run safe preview |
 | `watch.ts` | ~60 | Poll vault mtime; trigger reindex if changed |
@@ -97,6 +101,7 @@ coverage gate then drops incidental one-word overlaps while preserving true nega
 | `json-output.ts` | ~30 | ok(), fail() — stable JSON envelope |
 | `dates.ts` | ~80 | todayISO(), nowHHMM(), isValidISODate() — local TZ (NOT toISOString) |
 | `diacritics.ts` | ~20 | fold() — NFC → NFD → strip combining marks → đ→d → lowercase (single normalize point) |
+| `vietnamese-date-parser.ts` | ~130 | inferEventDate() — parse Vietnamese date expressions (d/m/yyyy, "ngày 12 tháng 4", "hôm 12/4", relative weekdays, month phrases); conservative (bare d/m requires context word; ambiguous → null; text never mutated) |
 | `checkin-parser.ts` | ~60 | parseCheckin() — "sleep_hours=7,exercise=chạy" → object |
 | `link-rewriter.ts` | ~70 | rewriteLinks() — find & replace wikilinks |
 
@@ -177,11 +182,12 @@ All commands follow: validate vault → resolve config → open db → run logic
 ```
 my-kioku init [--vault <path>] [--skill <dir>] [--hook]
 my-kioku remember [<text>] [--stdin] [--mood happy/4] [--time HH:MM] [--date YYYY-MM-DD] [--checkin sleep_hours=7,...]
-my-kioku recall [<query>] [--entity <name>] [--digest] [--since 30d] [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--limit 10]
+my-kioku recall [<query>] [--entity <name>] [--type <entity-type>] [--relation <rel-type>] [--digest] [--since 30d] [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--limit 10]
 my-kioku reflect [--since 30d] [--md]
 my-kioku reindex
 my-kioku import --from-kioku-lite <folder> [--dry-run]
 my-kioku entity merge <from> --into <to> [--dry-run]
+my-kioku entity list [--type <entity-type>]
 my-kioku forget [<entry-id> | --entity <name>] [--redact] [--dry-run]
 my-kioku watch [--interval 30]
 ```

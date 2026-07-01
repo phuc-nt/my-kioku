@@ -10,7 +10,7 @@
 ┌─────────────────────────────────────────────────────────────┐
 │                        CLI (cli.ts)                         │
 │  Routes: init, remember, recall, reflect, reindex, import,  │
-│  entity, forget, watch — all output stable JSON envelopes   │
+│  entity (merge|list), forget, watch — all output JSON       │
 └──────────────┬──────────────────────────────────────────────┘
                │
 ┌──────────────▼──────────────────────────────────────────────┐
@@ -137,26 +137,30 @@ the memory a diff-able / rollback-able history independent of the code repo.
 ## Key Flows
 
 ### Remember (Append + Index)
-1. Read today's daily note (or create)
-2. Parse frontmatter; extract/merge check-in meta
-3. Append entry: write `\n\n## HH:MM` + mood line (if provided) + text
-4. Extract wikilinks; stub missing entity notes
-5. Open db → index the daily note + stub entities in one transaction
-6. Checkpoint WAL, close db → return {ok, entry_id, ...}
+1. Resolve event-date: if `--date` provided, use it; else infer from Vietnamese text via inferEventDate() (conservative: confident match only, bare d/m requires date context, ambiguous → keep today; text never mutated); return InferredDate | null
+2. Read target daily note (or create)
+3. Parse frontmatter; extract/merge check-in meta
+4. Append entry: write `\n\n## HH:MM` + mood line (if provided) + text
+5. Extract inline `#hashtag` → tag rows + wikilinks; stub missing entity notes
+6. Open db → index the daily note + stub entities in one transaction
+7. Checkpoint WAL, close db → return {ok, entry_id, date_inferred_from: string | undefined, ...}
 
-**Verbatim safety**: appendEntry writes the exact heading AFTER a blank line; prose heading-shaped lines never split entries.
+**Verbatim safety**: appendEntry writes the exact heading AFTER a blank line; prose heading-shaped lines never split entries. Inline hashtags stay verbatim in body; derivation to tags is lossless.
 
-### Recall (FTS + Entity + Relation Expansion + Superseded Demotion)
+### Recall (FTS + Entity + Relation + Type Expansion + Current-Intent Ranking)
 1. Parse query; apply time filters (--since, --from, --to)
 2. FTS5 BM25 search on entries.body (unicode61, diacritics folded); OR-joined tokens + coverage gate (≥2 distinct tokens, except single-token queries)
 3. Extract entities from query; expand by wikilinks (query "Hùng" → entries linking [[Hùng]])
 4. If --relation <type> given: expand by relation (entries where Hùng is target of joy/trigger/... relation); bonus: RELATION_BONUS (0.5) above ENTITY_BONUS (0.3)
-5. Merge results; rank by score + recency; demote superseded entries as tiebreak (never pushes out of result set)
-6. Apply --limit; optionally --entity to narrow scope
-7. Hydrate results: each entry includes relations + tags + superseded_id (always present as {} / [] / null even if empty)
-8. Return {ok, results: [{ entry_id, date, time, score, mood, relations, tags, superseded, ... }, ...]}
+5. If --type <entity-type> given: hard filter to entries linking at least one entity of that type (folded entity↔links join); with no query/entity it seeds the result set
+6. Detect current-intent: keyword scan (hiện tại/bây giờ/đang/now/current) → if found, demote superseded entry ordering only (multiply score by SUPERSEDED_CURRENT_FACTOR 0.5)
+7. Merge results; rank by adjusted-score + recency; superseded tiebreak (never pushed out)
+8. Apply --limit; optionally --entity to narrow scope
+9. Hydrate results: each entry includes relations + tags + superseded_id (always present as {} / [] / null even if empty)
+10. Return {ok, query, type, relation, results: [{ entry_id, date, time, score, mood, relations, tags, superseded, ... }, ...]}
 
 **Digest mode**: --digest summarizes last N days for session-start hooks.
+**Ordering**: score (with current-intent penalty applied) > superseded-tiebreak > recency.
 
 ### Forget (Delete/Redact Entry)
 1. Resolve target: `date#ordinal` (validate ordinal exists) OR `--entity <name>` (find all entries linking it)
@@ -187,11 +191,12 @@ the memory a diff-able / rollback-able history independent of the code repo.
 6. **Tag converter**: tags not yet represented as entity notes; surfaced by frequency
 7. **Alias candidates**: similar entity names (Levenshtein similarity + diacritics)
 8. **Concept bridges**: tags appearing ≥3 times within range not yet linked as [[wikilink]]; suggests adding to grow graph
-9. **Superseded candidates**: pairs (older, newer) both linking distinct same-type entities (employer/workplace/job/company), sharing context, gap ≥7 days; agent writes `superseded:: <newer-id>`
-10. **Insight candidates**: mood spikes, health patterns, relationship frequency changes
-11. **Suggested actions**: actionable lint + relation backfill + tag conversion + concept-bridge + superseded candidates
-12. Write markdown report → `.kioku/reflect/{timestamp}.md` (if --md)
-13. Return {ok, report, lint, alias_candidates, mood_stats, missing_emotional_relation, relation_summary, tags_to_convert, concept_bridges, superseded_candidates, ...}
+9. **Entity-type suggestions**: `type:unknown` entities with confident signals (e.g., name targeted by with/joy/trigger/eases relations → person); precision-first (no signal → omitted)
+10. **Superseded candidates**: pairs (older, newer) both linking distinct same-type entities (employer/workplace/job/company), sharing context, gap ≥7 days; agent writes `superseded:: <newer-id>`
+11. **Insight candidates**: mood spikes, health patterns, relationship frequency changes
+12. **Suggested actions**: actionable lint + relation backfill + tag conversion + concept-bridge + entity-type suggestions + superseded candidates
+13. Write markdown report → `.kioku/reflect/{timestamp}.md` (if --md)
+14. Return {ok, period, lint, alias_candidates, mood_stats, health_stats, missing_emotional_relation, relation_summary, tags_to_convert, concept_bridges, entity_type_suggestions, superseded_candidates, insight_candidates, suggested_actions, ...}
 
 **No LLM**: all deterministic; agent reads suggested_actions and backfills via cron.
 

@@ -66,12 +66,14 @@ my-kioku reflect --since 30d
 | Command | Purpose |
 |---------|---------|
 | `init` | Create a vault (`journal/ entities/ insights/ .kioku/`). `--skill <dir>` copies the agent SKILL.md; `--hook` prints SessionStart hook setup. |
-| `remember` | Append a diary entry; auto-stub linked entities; index — all in one call. `--stdin`, `--mood`, `--checkin`, `--date`, `--time`. |
-| `recall` | Search: FTS5 + entity expansion + relation filter + time filters. `--entity`, `--relation`, `--digest`, `--since/--from/--to`, `--limit`. |
-| `reflect` | Deterministic scan → lint + stats + insight candidates for the agent. `--since`, `--md`. |
+| `remember` | Append a diary entry; auto-stub linked entities; index — all in one call. `--stdin`, `--mood`, `--checkin`, `--date`, `--time`. With no `--date`, infers the event-date from a Vietnamese phrase in the text ("hôm 12/4", "hôm qua"). |
+| `recall` | Search: FTS5 + entity expansion + relation/type filter + time filters. `--entity`, `--relation`, `--type <person\|place\|…>`, `--digest`, `--since/--from/--to`, `--limit`. |
+| `reflect` | Deterministic scan → lint + stats + insight/concept-bridge/superseded/type candidates for the agent. `--since`, `--md`. |
+| `forget <id>` / `forget --entity "X"` | Delete an entry (privacy). `--redact` keeps the heading + mood/relations/tags and blanks the body; `--dry-run` previews. |
 | `reindex` | Rebuild the disposable index from the vault. |
 | `import --from-kioku-lite <folder>` | Migrate legacy kioku-lite markdown (idempotent). `--dry-run`. |
 | `entity merge "B" --into "A"` | Fold one entity into another (link rewrite + frontmatter merge). `--dry-run`. |
+| `entity list [--type person]` | List entities (+ mention counts), optionally filtered by type. |
 | `watch [--interval 30]` | Foreground loop keeping the index in sync with manual edits. |
 
 All commands output a stable JSON envelope `{ok, data}` / `{ok:false, error, hint}`.
@@ -94,7 +96,9 @@ your memory gets a diff-able, rollback-able history (`git init` inside the vault
 - **Daily note**: frontmatter holds health check-ins; each entry is a `## HH:MM`
   section. The leading lines (after the heading) may carry inline fields —
   `mood:: emotion/intensity`, typed emotional relations (`joy:: [[X]]`,
-  `trigger:: [[Y]]`, `with::`, `eases::`), and `tags:: a, b`. The rest is **verbatim**.
+  `trigger:: [[Y]]`, `with::`, `eases::`), `tags:: a, b`, and `superseded:: <id>`
+  (marks a fact replaced by a newer entry). The rest is **verbatim** — an inline
+  `#hashtag` in the body is also indexed as a tag while staying in the text.
 - **Entity note**: `[[wikilinks]]` from entries point here; frontmatter `type:`
   classifies it (person/place/event/activity/thing/unknown).
 - **Emotional relations** are markdown-native typed edges (not a graph DB): the

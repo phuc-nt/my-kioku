@@ -77,7 +77,7 @@ aliases, add emotional relations, write insights). Example openclaw cron job
   "name": "my-kioku living loop — nightly reflect",
   "enabled": true,
   "schedule": { "kind": "cron", "expr": "0 3 * * *", "tz": "Asia/Ho_Chi_Minh" },
-  "prompt": "Run `my-kioku reflect --vault ~/kioku-vault --since 30d`, then work the data.suggested_actions list top to bottom. Edit the vault markdown directly. NEVER rewrite the user's words — preserve language and wording verbatim; only set entity type: fields and add [[links]] / relation lines."
+  "prompt": "Run `my-kioku reflect --vault ~/kioku-vault --since 30d`, then work the data.suggested_actions list top to bottom. Edit the vault markdown directly. NEVER rewrite the user's words — preserve language and wording verbatim. Only ADD: set entity type: fields (or accept entity_type_suggestions), add [[links]] / relation lines / [[concept]] bridges, and add a superseded:: <id> field to a replaced entry. NEVER edit or overwrite an existing entry's body — a correction is a NEW entry, never a rewrite."
 }
 ```
 
