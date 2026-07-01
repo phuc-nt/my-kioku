@@ -7,9 +7,9 @@
 database — markdown + wikilinks + frontmatter are the source of truth; SQLite FTS5
 is a disposable index that rebuilds 100% from the vault. No vector search.
 
-Built for a personal-life + emotions diary (not work). Three commands cover the
-whole lifecycle, designed so even a small model gets the protocol right: one
-situation → one command.
+Built for a personal-life + emotions diary (not work). A tiny command set covers the
+whole lifecycle — `remember` / `recall` / `reflect` (plus `forget` for privacy) —
+designed so even a small model gets the protocol right: one situation → one command.
 
 ## Why
 
@@ -55,10 +55,14 @@ my-kioku remember --checkin sleep_hours=7,exercise="chạy 5km",mood_score=4
 # 4. Recall
 my-kioku recall "phở Quảng An"
 my-kioku recall --entity "Hùng" --since 30d
+my-kioku recall --type place             # everything linking a place-typed entity
 my-kioku recall --digest                 # compact summary for a session-start hook
 
 # 5. Reflect (the living loop — run on a schedule)
 my-kioku reflect --since 30d
+
+# 6. Forget (privacy) — delete or redact an entry
+my-kioku forget "2026-06-12#1" --dry-run
 ```
 
 ## Commands
@@ -110,10 +114,13 @@ your memory gets a diff-able, rollback-able history (`git init` inside the vault
 ## The living loop
 
 `reflect` is 100% deterministic (no LLM) and read-only. It surfaces gaps —
-unclassified entities, unlinked entries, possible aliases, mood/health trends,
-insight candidates — each traceable to a real entry id. A scheduled agent reads
-the `suggested_actions`, then classifies entities, backfills links, merges
-aliases, and writes insight notes. The vault improves itself over time.
+unclassified entities (with a suggested `type:`), unlinked entries, possible aliases,
+recurring tags that could become `[[concept]]` links, facts a newer entry may have
+superseded, mood/health trends, insight candidates — each traceable to a real entry
+id. A scheduled agent reads the `suggested_actions`, then classifies entity types,
+backfills links, adds concept/relation links, marks superseded facts, and writes
+insight notes. The vault improves itself over time — **by adding, never by rewriting
+past entries**.
 
 Reference agent harnesses live in [`tests/sim/`](./tests/sim) — they drive a small
 model (Qwen via OpenRouter) through each living-loop action (backfill links, extract
